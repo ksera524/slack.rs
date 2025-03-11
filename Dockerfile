@@ -9,7 +9,7 @@ RUN apt-get update && \
     rm -rf /var/lib/apt/lists/*
 
 # Copy manifest files for dependency caching
-COPY Cargo.toml Cargo.lock ./
+COPY Cargo.toml ./
 
 # Create a dummy main.rs to build dependencies
 RUN mkdir -p src && \
