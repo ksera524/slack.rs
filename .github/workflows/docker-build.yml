@@ -2,7 +2,9 @@ name: Docker Image CI
 
 on:
   push:
-    branches: [main]
+    branches:
+      - main
+      - master
 
 permissions:
   contents: write
@@ -13,23 +15,6 @@ jobs:
     steps:
       - uses: actions/checkout@v2
 
-      - name: Install Rust
+      - name: Push to Docker Hub
         run: |
-          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
-          echo "$HOME/.cargo/bin" >> $GITHUB_PATH
-
-      - name: Run Clippy (Linting)
-        run: cargo clippy --all-targets --all-features -- -D warnings
-
-      - name: Run Tests
-        run: cargo test --all-targets
-
-      - name: Login to Harbor
-        run: |
-          echo "${{ secrets.DOCKER_PASSWORD }}" | docker login harbor.qroksera.com -u "${{ secrets.DOCKER_USERNAME }}" --password-stdin
-
-      - name: Build and push Docker Image
-        run: |
-          docker build . --file Dockerfile \
-            --tag harbor.qroksera.com/sandbox/slack.rs:latest
-          docker push harbor.qroksera.com/sandbox/slack.rs:latest
+          curl -sk https://workflow.qroksera.com/api/v1/events/argoworkflow/workflow -H "Authorization: ${{ secrets.TOKEN }}" -d  '{"message": "slack.rs"}'
