@@ -12,14 +12,6 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Configure Docker for insecure Harbor registry
-        run: |
-          sudo mkdir -p /etc/docker
-          echo '{
-            "insecure-registries": ["192.168.122.100"]
-          }' | sudo tee /etc/docker/daemon.json
-          sudo systemctl restart docker
-
       - name: Setup Harbor CA Certificate
         run: |
           kubectl get secret harbor-ca-cert -n arc-systems -o jsonpath='{.data.ca\.crt}' | base64 -d > harbor-ca.crt
@@ -27,6 +19,7 @@ jobs:
           sudo update-ca-certificates
           sudo mkdir -p /etc/docker/certs.d/192.168.122.100
           sudo cp harbor-ca.crt /etc/docker/certs.d/192.168.122.100/ca.crt
+
 
       - name: Login to Harbor with CA Certificate
         run: |
