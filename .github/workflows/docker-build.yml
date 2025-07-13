@@ -17,19 +17,32 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Login to Harbor (simple)
+      - name: Setup Docker for insecure registry
         run: |
+          # Docker設定ディレクトリを作成
           mkdir -p ~/.docker
-          echo '{
-            "auths": {
-              "192.168.122.100": {
-                "auth": "'$(echo -n 'admin:Harbor12345' | base64)'"
-              }
-            },
-            "insecure-registries": ["192.168.122.100"]
-          }' > ~/.docker/config.json
 
-          docker login 192.168.122.100 -u admin -p Harbor12345 || \
+          # Docker daemonディレクトリを作成（権限があれば）
+          sudo mkdir -p /etc/docker || true
+
+          # insecure registry設定を作成
+          echo '{
+            "insecure-registries": ["192.168.122.100"]
+          }' | sudo tee /etc/docker/daemon.json || echo "Cannot write daemon.json, using alternative method"
+
+          # Docker daemon再起動（可能であれば）
+          sudo systemctl restart docker || sudo service docker restart || true
+
+          # 待機
+          sleep 5
+
+      - name: Login to Harbor
+        run: |
+          # TLS検証を無効化する環境変数（BuildKitには影響なし）
+          export DOCKER_TLS_VERIFY=""
+          export DOCKER_CERT_PATH=""
+
+          # Harbor にログイン
           echo "Harbor12345" | docker login 192.168.122.100 -u admin --password-stdin
 
       - name: Extract metadata
