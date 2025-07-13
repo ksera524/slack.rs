@@ -24,8 +24,26 @@ jobs:
         curl -f https://192.168.122.100/api/v2.0/systeminfo || echo "Harbor接続テスト失敗、docker loginを続行"
         
     - name: Harborにログイン
+      env:
+        DOCKER_CONTENT_TRUST: "0"
+        DOCKER_TLS_VERIFY: "0"
       run: |
-        # Docker daemonがinsecure registryとして設定済み
+        # ランナーの実際のDocker設定パスを確認
+        docker version
+        
+        # Docker daemonプロセス確認
+        ps aux | grep docker || echo "Docker daemon process not found"
+        
+        # Docker infoで設定確認
+        docker info
+        
+        # 設定ファイルの場所確認と作成
+        find /etc -name "daemon.json" 2>/dev/null || echo "daemon.json not found"
+        
+        # Skopeoを使用してHarbor接続テスト（証明書検証なし）
+        which skopeo || echo "skopeo not available"
+        
+        # 最終的にHarborログイン実行
         echo "Harbor12345" | docker login 192.168.122.100 -u admin --password-stdin
         
     - name: Dockerイメージのビルドとプッシュ
@@ -42,7 +60,7 @@ jobs:
         output: 'trivy-results.sarif'
         
     - name: Trivyスキャン結果のアップロード
-      uses: github/codeql-action/upload-sarif@v2
+      uses: github/codeql-action/upload-sarif@v3
       if: always() && github.event_name != 'pull_request'
       with:
         sarif_file: 'trivy-results.sarif'
