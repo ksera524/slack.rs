@@ -25,8 +25,8 @@ jobs:
         
     - name: Harborにログイン
       run: |
-        # HTTPでHarborにログイン（証明書問題を回避）
-        echo "Harbor12345" | docker login http://192.168.122.100 -u admin --password-stdin
+        # Docker daemonがinsecure registryとして設定済み
+        echo "Harbor12345" | docker login 192.168.122.100 -u admin --password-stdin
         
     - name: Dockerイメージのビルドとプッシュ
       run: |
