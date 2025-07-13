@@ -12,27 +12,35 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Setup kubectl (if not available)
-        run: |
-          # kubectlがない場合はインストール
-          if ! command -v kubectl &> /dev/null; then
-            curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
-            chmod +x kubectl
-            sudo mv kubectl /usr/local/bin/
-          fi
-
       - name: Setup Harbor CA Certificate
         run: |
-          # Kubernetesからシークレットを取得
+          # Kubernetesからシークレットを取得 (権限付与後)
           kubectl get secret harbor-tls-secret -n harbor -o jsonpath='{.data.tls\.crt}' | base64 -d > harbor.crt
           
           # Docker証明書ディレクトリを作成
           sudo mkdir -p /etc/docker/certs.d/192.168.122.100
           sudo cp harbor.crt /etc/docker/certs.d/192.168.122.100/ca.crt
           
+          # containerd証明書ディレクトリも作成
+          sudo mkdir -p /etc/containerd/certs.d/192.168.122.100
+          sudo cp harbor.crt /etc/containerd/certs.d/192.168.122.100/ca.crt
+          
+          # containerd hosts.toml設定
+          sudo tee /etc/containerd/certs.d/192.168.122.100/hosts.toml << EOF
+          server = "https://192.168.122.100"
+          
+          [host."https://192.168.122.100"]
+            capabilities = ["pull", "resolve", "push"]
+            ca = "/etc/containerd/certs.d/192.168.122.100/ca.crt"
+            skip_verify = false
+          EOF
+          
           # システムCA証明書にも追加
           sudo cp harbor.crt /usr/local/share/ca-certificates/harbor.crt
           sudo update-ca-certificates
+          
+          # containerdを再起動
+          sudo systemctl restart containerd
 
       - name: Login to Harbor with CA Certificate
         run: |
