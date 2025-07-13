@@ -12,13 +12,19 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Login to Harbor (HTTP)
+      - name: Setup Harbor CA Certificate
         run: |
-          # HTTP でHarborにログイン
-          echo "Harbor12345" | docker login http://192.168.122.100 -u admin --password-stdin
+          kubectl get secret harbor-ca-cert -n arc-systems -o jsonpath='{.data.ca\.crt}' | base64 -d > harbor-ca.crt
+          sudo cp harbor-ca.crt /usr/local/share/ca-certificates/harbor-ca.crt
+          sudo update-ca-certificates
+          sudo mkdir -p /etc/docker/certs.d/192.168.122.100
+          sudo cp harbor-ca.crt /etc/docker/certs.d/192.168.122.100/ca.crt
+
+      - name: Login to Harbor with CA Certificate
+        run: |
+          echo "Harbor12345" | docker login 192.168.122.100 -u admin --password-stdin
 
       - name: Build and push Docker image
         run: |
-          # HTTP registry にpush
           docker build -t 192.168.122.100/sandbox/slack-rs:latest .
           docker push 192.168.122.100/sandbox/slack-rs:latest
