@@ -22,30 +22,14 @@ jobs:
               http = true
               insecure = true
 
-      - name: Setup Docker for Harbor (insecure)
-        run: |
-          # Docker clientの設定でinsecure registryを指定
-          mkdir -p ~/.docker
-          cat > ~/.docker/config.json <<EOF
-          {
-            "auths": {},
-            "HttpHeaders": {
-              "User-Agent": "Docker-Client/20.10.0 (linux)"
-            },
-            "credsStore": "",
-            "experimental": "disabled"
-          }
-          EOF
-
-          # 環境変数でDockerのTLS検証を無効化
-          echo "DOCKER_TLS_VERIFY=" >> $GITHUB_ENV
-
-      - name: Login to Harbor
+      - name: Login to Harbor (HTTP)
         uses: docker/login-action@v3
         with:
           registry: 192.168.122.100
           username: admin
           password: Harbor12345
+        env:
+          DOCKER_REGISTRY_HTTP: "true"
 
       - name: Extract metadata
         id: meta
