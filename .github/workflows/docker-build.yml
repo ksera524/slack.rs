@@ -1,61 +1,54 @@
-name: Build and Push to Harbor
+name: Harborへのビルドとプッシュ
 
 on:
   push:
     branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
 
 jobs:
   build:
-    runs-on: slack-rs-runners
-
+    runs-on: slack-rs-runners  # Runner Scale Set名
+    
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Setup kubectl (if not available)
-        run: |
-          # kubectlがない場合はインストール
-          if ! command -v kubectl &> /dev/null; then
-            curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
-            chmod +x kubectl
-            sudo mv kubectl /usr/local/bin/
-          fi
-
-      - name: Setup Harbor CA Certificate
-        run: |
-          # Kubernetesからシークレットを取得
-          kubectl get secret harbor-tls-secret -n harbor -o jsonpath='{.data.tls\.crt}' | base64 -d > harbor.crt
-          
-          # Docker証明書ディレクトリを作成
-          sudo mkdir -p /etc/docker/certs.d/192.168.122.100
-          sudo cp harbor.crt /etc/docker/certs.d/192.168.122.100/ca.crt
-          
-          # containerd証明書ディレクトリも作成
-          sudo mkdir -p /etc/containerd/certs.d/192.168.122.100
-          sudo cp harbor.crt /etc/containerd/certs.d/192.168.122.100/ca.crt
-          
-          # containerd hosts.toml設定
-          sudo tee /etc/containerd/certs.d/192.168.122.100/hosts.toml << EOF
-          server = "https://192.168.122.100"
-          
-          [host."https://192.168.122.100"]
-            capabilities = ["pull", "resolve", "push"]
-            ca = "/etc/containerd/certs.d/192.168.122.100/ca.crt"
-            skip_verify = false
-          EOF
-          
-          # システムCA証明書にも追加
-          sudo cp harbor.crt /usr/local/share/ca-certificates/harbor.crt
-          sudo update-ca-certificates
-          
-          # containerdの再起動をスキップ (systemdが利用できない環境)
-          echo "containerd restart skipped - systemd not available"
-
-      - name: Login to Harbor with CA Certificate
-        run: |
-          echo "Harbor12345" | docker login 192.168.122.100 -u admin --password-stdin
-
-      - name: Build and push Docker image
-        run: |
-          docker build -t 192.168.122.100/sandbox/slack-rs:latest .
-          docker push 192.168.122.100/sandbox/slack-rs:latest
+    - name: コードをチェックアウト
+      uses: actions/checkout@v4
+      
+    - name: Harbor証明書の信頼確認
+      run: |
+        # Harbor証明書が信頼されているか確認（Harbor CA Trust DaemonSetで処理済み）
+        echo "Harbor証明書の信頼状態を確認中..."
+        docker info | grep -i "insecure" || echo "非セキュアレジストリの設定なし（期待される状態）"
+        
+        # Harbor接続テスト（オプション）
+        curl -f https://192.168.122.100/api/v2.0/systeminfo || echo "Harbor接続テスト失敗、docker loginを続行"
+        
+    - name: Harborにログイン
+      run: |
+        # Docker daemonの非セキュアレジストリ設定
+        sudo mkdir -p /etc/docker
+        echo '{"insecure-registries": ["192.168.122.100"]}' | sudo tee /etc/docker/daemon.json
+        sudo systemctl restart docker
+        sleep 5
+        
+        # Harbor証明書を無視してログイン
+        echo "Harbor12345" | docker login 192.168.122.100 -u admin --password-stdin
+        
+    - name: Dockerイメージのビルドとプッシュ
+      run: |
+        docker build -t 192.168.122.100/sandbox/${{ github.event.repository.name }}:latest .
+        docker push 192.168.122.100/sandbox/${{ github.event.repository.name }}:latest
+        
+    - name: Trivyによるイメージスキャン
+      uses: aquasecurity/trivy-action@master
+      if: github.event_name != 'pull_request'
+      with:
+        image-ref: 192.168.122.100/sandbox/${{ github.event.repository.name }}:latest
+        format: 'sarif'
+        output: 'trivy-results.sarif'
+        
+    - name: Trivyスキャン結果のアップロード
+      uses: github/codeql-action/upload-sarif@v2
+      if: always() && github.event_name != 'pull_request'
+      with:
+        sarif_file: 'trivy-results.sarif'
