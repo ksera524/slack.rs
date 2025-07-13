@@ -23,33 +23,60 @@ jobs:
         # Harbor接続テスト（オプション）
         curl -f https://192.168.122.100/api/v2.0/systeminfo || echo "Harbor接続テスト失敗、docker loginを続行"
         
-    - name: Harborにログイン
+    - name: Docker daemon設定とHarborログイン
       env:
         DOCKER_CONTENT_TRUST: "0"
         DOCKER_TLS_VERIFY: "0"
       run: |
-        # ランナーの実際のDocker設定パスを確認
-        docker version
+        # Dockerクライアント設定ディレクトリ作成
+        mkdir -p ~/.docker
         
-        # Docker daemonプロセス確認
-        ps aux | grep docker || echo "Docker daemon process not found"
+        # Docker clientのCA証明書エラーを回避
+        touch ~/.docker/ca.pem
+        touch ~/.docker/cert.pem  
+        touch ~/.docker/key.pem
         
-        # Docker infoで設定確認
-        docker info
+        # Dockerホスト設定確認
+        echo "DOCKER_HOST: $DOCKER_HOST"
         
-        # 設定ファイルの場所確認と作成
-        find /etc -name "daemon.json" 2>/dev/null || echo "daemon.json not found"
+        # Docker version確認（基本動作テスト）
+        docker version --format '{{.Client.Version}}' || echo "Docker client error"
         
-        # Skopeoを使用してHarbor接続テスト（証明書検証なし）
-        which skopeo || echo "skopeo not available"
+        # 証明書検証無効化を試行
+        export DOCKER_TLS_VERIFY=""
+        export DOCKER_CERT_PATH=""
         
-        # 最終的にHarborログイン実行
-        echo "Harbor12345" | docker login 192.168.122.100 -u admin --password-stdin
+        # Podman使用可能か確認（代替手段）
+        which podman && echo "Podman available" || echo "Podman not available"
+        
+        # 最終的にHarborログイン（各種方式で試行）
+        echo "=== Harbor Login Attempts ==="
+        
+        # 方式1: 標準ログイン
+        echo "Harbor12345" | docker login 192.168.122.100 -u admin --password-stdin 2>&1 || echo "Method 1 failed"
+        
+        # 方式2: 明示的にHTTPSを使用
+        echo "Harbor12345" | docker login https://192.168.122.100 -u admin --password-stdin 2>&1 || echo "Method 2 failed"  
+        
+        # 方式3: curlでAPIエンドポイント直接テスト
+        curl -k -u admin:Harbor12345 https://192.168.122.100/v2/_catalog 2>&1 || echo "Method 3 failed"
         
     - name: Dockerイメージのビルドとプッシュ
       run: |
-        docker build -t 192.168.122.100/sandbox/${{ github.event.repository.name }}:latest .
-        docker push 192.168.122.100/sandbox/${{ github.event.repository.name }}:latest
+        # BuildxでDocker buildを実行
+        docker buildx create --use --driver docker-container || echo "Buildx already configured"
+        
+        # insecure registryでビルドとプッシュ
+        docker buildx build \
+          --platform linux/amd64 \
+          --tag 192.168.122.100/sandbox/${{ github.event.repository.name }}:latest \
+          --push \
+          --allow insecure \
+          . || {
+            echo "Buildx failed, trying standard build"
+            docker build -t 192.168.122.100/sandbox/${{ github.event.repository.name }}:latest .
+            docker push 192.168.122.100/sandbox/${{ github.event.repository.name }}:latest
+          }
         
     - name: Trivyによるイメージスキャン
       uses: aquasecurity/trivy-action@master
