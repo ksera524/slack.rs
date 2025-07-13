@@ -48,9 +48,23 @@ jobs:
         
         echo "Using crane for insecure push..."
         /tmp/crane auth login 192.168.122.100 -u admin -p Harbor12345 --insecure || echo "Crane auth failed"
-        /tmp/crane push 192.168.122.100/sandbox/${{ github.event.repository.name }}:latest --insecure || echo "Crane push failed"
         
-        # 方式3: Docker save/load + curl upload
+        # craneではDockerイメージのtarファイルからプッシュが必要
+        docker save 192.168.122.100/sandbox/${{ github.event.repository.name }}:latest -o /tmp/image.tar
+        /tmp/crane push /tmp/image.tar 192.168.122.100/sandbox/${{ github.event.repository.name }}:latest --insecure || echo "Crane push failed"
+        
+        # 方式2b: crane copyコマンドを使用（Docker daemonから直接）
+        /tmp/crane copy 192.168.122.100/sandbox/${{ github.event.repository.name }}:latest 192.168.122.100/sandbox/${{ github.event.repository.name }}:latest --insecure || echo "Crane copy failed"
+        
+        # 方式3: regctlツールを使用
+        echo "Installing regctl for insecure push..."
+        curl -L https://github.com/regclient/regclient/releases/latest/download/regctl-linux-amd64 -o /tmp/regctl
+        chmod +x /tmp/regctl
+        
+        echo "Using regctl for insecure push..."
+        /tmp/regctl image copy docker-daemon:192.168.122.100/sandbox/${{ github.event.repository.name }}:latest 192.168.122.100/sandbox/${{ github.event.repository.name }}:latest --registry-tls-disabled || echo "regctl push failed"
+        
+        # 方式4: Docker save/load + curl upload
         echo "Manual upload attempt..."
         docker save 192.168.122.100/sandbox/${{ github.event.repository.name }}:latest | gzip > /tmp/image.tar.gz
         echo "Image saved to /tmp/image.tar.gz"
