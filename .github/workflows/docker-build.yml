@@ -8,7 +8,7 @@ on:
 
 jobs:
   build:
-    runs-on: slack-rs-runners  # Runner Scale Set名
+    runs-on: slack-rs-runners 
     
     steps:
     - name: コードをチェックアウト
@@ -25,14 +25,8 @@ jobs:
         
     - name: Harborにログイン
       run: |
-        # Docker daemonの非セキュアレジストリ設定
-        sudo mkdir -p /etc/docker
-        echo '{"insecure-registries": ["192.168.122.100"]}' | sudo tee /etc/docker/daemon.json
-        sudo systemctl restart docker
-        sleep 5
-        
-        # Harbor証明書を無視してログイン
-        echo "Harbor12345" | docker login 192.168.122.100 -u admin --password-stdin
+        # HTTPでHarborにログイン（証明書問題を回避）
+        echo "Harbor12345" | docker login http://192.168.122.100 -u admin --password-stdin
         
     - name: Dockerイメージのビルドとプッシュ
       run: |
