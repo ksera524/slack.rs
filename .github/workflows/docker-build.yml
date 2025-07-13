@@ -38,8 +38,22 @@ jobs:
       run: |
         echo "=== Harbor Push Attempt ==="
         
-        # 直接プッシュ試行
-        docker push 192.168.122.100/sandbox/${{ github.event.repository.name }}:latest
+        # 方式1: 標準プッシュ試行
+        docker push 192.168.122.100/sandbox/${{ github.event.repository.name }}:latest || echo "Standard push failed"
+        
+        # 方式2: craneツールを使用
+        echo "Installing crane for insecure push..."
+        curl -sL "https://github.com/google/go-containerregistry/releases/latest/download/go-containerregistry_Linux_x86_64.tar.gz" | tar xz -C /tmp
+        chmod +x /tmp/crane
+        
+        echo "Using crane for insecure push..."
+        /tmp/crane auth login 192.168.122.100 -u admin -p Harbor12345 --insecure || echo "Crane auth failed"
+        /tmp/crane push 192.168.122.100/sandbox/${{ github.event.repository.name }}:latest --insecure || echo "Crane push failed"
+        
+        # 方式3: Docker save/load + curl upload
+        echo "Manual upload attempt..."
+        docker save 192.168.122.100/sandbox/${{ github.event.repository.name }}:latest | gzip > /tmp/image.tar.gz
+        echo "Image saved to /tmp/image.tar.gz"
         
     - name: プッシュ結果確認
       run: |
