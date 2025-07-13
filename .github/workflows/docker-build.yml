@@ -17,11 +17,11 @@ jobs:
           # 作成したTLS証明書を使用
           sudo mkdir -p /etc/docker/certs.d/192.168.122.100
           # 証明書をコピー (事前にrunnerホストにコピーしておく)
-          sudo cp /home/runner/harbor.crt /etc/docker/certs.d/192.168.122.100/ca.crt
+          #sudo cp /home/runner/harbor.crt /etc/docker/certs.d/192.168.122.100/ca.crt
           
           # または、kubectlが利用可能な場合はsecretから取得
-          # kubectl get secret harbor-tls-secret -n harbor -o jsonpath='{.data.tls\.crt}' | base64 -d > harbor.crt
-          # sudo cp harbor.crt /etc/docker/certs.d/192.168.122.100/ca.crt
+          kubectl get secret harbor-tls-secret -n harbor -o jsonpath='{.data.tls\.crt}' | base64 -d > harbor.crt
+          sudo cp harbor.crt /etc/docker/certs.d/192.168.122.100/ca.crt
 
       - name: Login to Harbor with CA Certificate
         run: |
