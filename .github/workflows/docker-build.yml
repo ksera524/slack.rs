@@ -10,10 +10,6 @@ jobs:
   build:
     runs-on: slack-rs-runners 
     
-jobs:
-  build-and-push:
-    runs-on: k8s-myhome-runners
-    
     steps:
     - name: コードをチェックアウト
       uses: actions/checkout@v4
