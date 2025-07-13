@@ -14,8 +14,13 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Set up Docker Buildx
+      - name: Setup Docker Buildx with insecure registry
         uses: docker/setup-buildx-action@v3
+        with:
+          config-inline: |
+            [registry."192.168.122.100"]
+              http = true
+              insecure = true
 
       - name: Setup Docker for Harbor (insecure)
         run: |
