@@ -67,8 +67,8 @@ jobs:
         echo "Using regctl for insecure push..."
         
         # regctlの設定でinsecure registryを許可（harbor.localも設定）
-        /tmp/regctl registry set 192.168.122.100 --tls disabled
-        /tmp/regctl registry set harbor.local --tls disabled
+        /tmp/regctl registry set 192.168.122.100 --tls disabled || echo "regctl registry set failed"
+        /tmp/regctl registry set harbor.local --tls disabled || echo "regctl harbor.local set failed"
         
         # regctlでtarファイルを使用
         docker save 192.168.122.100/sandbox/${{ github.event.repository.name }}:latest -o /tmp/regctl-image.tar
