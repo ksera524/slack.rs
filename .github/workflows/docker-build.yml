@@ -44,6 +44,12 @@ jobs:
         
         # Docker configにトークンベース認証を直接設定
         mkdir -p ~/.docker
+        
+        # 空のCA証明書ファイルを作成してエラーを回避
+        touch ~/.docker/ca.pem
+        touch ~/.docker/cert.pem
+        touch ~/.docker/key.pem
+        
         cat > ~/.docker/config.json << EOF
         {
           "auths": {
@@ -57,13 +63,28 @@ jobs:
         }
         EOF
         
+        # DOCKER_HOST環境変数をクリア（証明書エラー回避）
+        unset DOCKER_TLS_VERIFY
+        unset DOCKER_CERT_PATH
+        export DOCKER_HOST=unix:///var/run/docker.sock
+        
         echo "Docker config created with base64 auth"
         
     - name: Dockerイメージのビルドとプッシュ  
       env:
         DOCKER_CONTENT_TRUST: "0"
-        DOCKER_TLS_VERIFY: "0"
+        DOCKER_TLS_VERIFY: ""
+        DOCKER_CERT_PATH: ""
+        DOCKER_HOST: "unix:///var/run/docker.sock"
       run: |
+        # Docker環境設定の確認と修正
+        echo "=== Docker Environment Setup ==="
+        echo "DOCKER_HOST: $DOCKER_HOST"
+        echo "DOCKER_TLS_VERIFY: $DOCKER_TLS_VERIFY"
+        
+        # 証明書ファイルが存在することを確認
+        ls -la ~/.docker/
+        
         # イメージをローカルでビルド
         echo "=== Building Docker Image ==="
         docker build -t 192.168.122.100/sandbox/${{ github.event.repository.name }}:latest .
