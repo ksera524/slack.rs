@@ -12,16 +12,27 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Setup kubectl (if not available)
+        run: |
+          # kubectlがない場合はインストール
+          if ! command -v kubectl &> /dev/null; then
+            curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+            chmod +x kubectl
+            sudo mv kubectl /usr/local/bin/
+          fi
+
       - name: Setup Harbor CA Certificate
         run: |
-          # 作成したTLS証明書を使用
-          sudo mkdir -p /etc/docker/certs.d/192.168.122.100
-          # 証明書をコピー (事前にrunnerホストにコピーしておく)
-          #sudo cp /home/runner/harbor.crt /etc/docker/certs.d/192.168.122.100/ca.crt
-          
-          # または、kubectlが利用可能な場合はsecretから取得
+          # Kubernetesからシークレットを取得
           kubectl get secret harbor-tls-secret -n harbor -o jsonpath='{.data.tls\.crt}' | base64 -d > harbor.crt
+          
+          # Docker証明書ディレクトリを作成
+          sudo mkdir -p /etc/docker/certs.d/192.168.122.100
           sudo cp harbor.crt /etc/docker/certs.d/192.168.122.100/ca.crt
+          
+          # システムCA証明書にも追加
+          sudo cp harbor.crt /usr/local/share/ca-certificates/harbor.crt
+          sudo update-ca-certificates
 
       - name: Login to Harbor with CA Certificate
         run: |
