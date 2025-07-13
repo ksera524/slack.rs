@@ -14,12 +14,14 @@ jobs:
 
       - name: Setup Harbor CA Certificate
         run: |
-          kubectl get secret harbor-ca-cert -n arc-systems -o jsonpath='{.data.ca\.crt}' | base64 -d > harbor-ca.crt
-          sudo cp harbor-ca.crt /usr/local/share/ca-certificates/harbor-ca.crt
-          sudo update-ca-certificates
+          # 作成したTLS証明書を使用
           sudo mkdir -p /etc/docker/certs.d/192.168.122.100
-          sudo cp harbor-ca.crt /etc/docker/certs.d/192.168.122.100/ca.crt
-
+          # 証明書をコピー (事前にrunnerホストにコピーしておく)
+          sudo cp /home/runner/harbor.crt /etc/docker/certs.d/192.168.122.100/ca.crt
+          
+          # または、kubectlが利用可能な場合はsecretから取得
+          # kubectl get secret harbor-tls-secret -n harbor -o jsonpath='{.data.tls\.crt}' | base64 -d > harbor.crt
+          # sudo cp harbor.crt /etc/docker/certs.d/192.168.122.100/ca.crt
 
       - name: Login to Harbor with CA Certificate
         run: |
