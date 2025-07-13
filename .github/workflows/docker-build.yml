@@ -23,7 +23,7 @@ jobs:
 
       - name: Setup Harbor CA Certificate
         run: |
-          # Kubernetesからシークレットを取得 (権限付与後)
+          # Kubernetesからシークレットを取得
           kubectl get secret harbor-tls-secret -n harbor -o jsonpath='{.data.tls\.crt}' | base64 -d > harbor.crt
           
           # Docker証明書ディレクトリを作成
@@ -48,8 +48,8 @@ jobs:
           sudo cp harbor.crt /usr/local/share/ca-certificates/harbor.crt
           sudo update-ca-certificates
           
-          # containerdを再起動
-          sudo systemctl restart containerd
+          # containerdの再起動をスキップ (systemdが利用できない環境)
+          echo "containerd restart skipped - systemd not available"
 
       - name: Login to Harbor with CA Certificate
         run: |
