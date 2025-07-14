@@ -15,18 +15,12 @@ jobs:
       uses: actions/checkout@v4
       
     - name: Harbor接続確認
-      env:
-        HARBOR_USERNAME: ${{ secrets.HARBOR_USERNAME }}
-        HARBOR_PASSWORD: ${{ secrets.HARBOR_PASSWORD }}
       run: |
         echo "=== Harbor API Connection Test ==="
         curl -k -u $HARBOR_USERNAME:$HARBOR_PASSWORD https://192.168.122.100/v2/_catalog
         curl -k -u $HARBOR_USERNAME:$HARBOR_PASSWORD https://192.168.122.100/api/v2.0/projects | jq '.[] | select(.name=="sandbox")'
         
     - name: Dockerイメージビルド
-      env:
-        HARBOR_USERNAME: ${{ secrets.HARBOR_USERNAME }}
-        HARBOR_PASSWORD: ${{ secrets.HARBOR_PASSWORD }}
       run: |
         echo "=== Docker Image Build ==="
         
@@ -39,9 +33,6 @@ jobs:
         docker build -t 192.168.122.100/sandbox/${{ github.event.repository.name }}:${{ github.sha }} .
         
     - name: Harborプッシュ（crane使用）
-      env:
-        HARBOR_USERNAME: ${{ secrets.HARBOR_USERNAME }}
-        HARBOR_PASSWORD: ${{ secrets.HARBOR_PASSWORD }}
       run: |
         echo "=== Harbor Push with Crane ==="
         
@@ -67,9 +58,6 @@ jobs:
         echo "✅ Harbor push completed successfully"
         
     - name: プッシュ結果確認
-      env:
-        HARBOR_USERNAME: ${{ secrets.HARBOR_USERNAME }}
-        HARBOR_PASSWORD: ${{ secrets.HARBOR_PASSWORD }}
       run: |
         echo "=== Harbor Push Verification ==="
         
