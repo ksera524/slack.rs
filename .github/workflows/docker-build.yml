@@ -19,6 +19,11 @@ jobs:
         echo "=== Harbor API Connection Test ==="
         echo "HARBOR_USERNAME: $HARBOR_USERNAME"
         echo "HARBOR_PASSWORD: ${HARBOR_PASSWORD:0:5}..."
+        # 環境変数の存在確認
+        if [[ -z "$HARBOR_USERNAME" || -z "$HARBOR_PASSWORD" ]]; then
+            echo "エラー: HARBOR_USERNAME または HARBOR_PASSWORD が設定されていません"
+            exit 1
+        fi
         curl -k -u $HARBOR_USERNAME:$HARBOR_PASSWORD https://192.168.122.100/v2/_catalog
         curl -k -u $HARBOR_USERNAME:$HARBOR_PASSWORD https://192.168.122.100/api/v2.0/projects | jq '.[] | select(.name=="sandbox")'
         
