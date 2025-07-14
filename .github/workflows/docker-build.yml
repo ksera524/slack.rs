@@ -11,12 +11,14 @@ jobs:
     runs-on: slack-rs-runners 
     
     steps:
-    - name: コードをチェックアウト
+    - name: Checkout code
       uses: actions/checkout@v4
       
     - name: Harbor接続確認
       run: |
         echo "=== Harbor API Connection Test ==="
+        echo "HARBOR_USERNAME: $HARBOR_USERNAME"
+        echo "HARBOR_PASSWORD: ${HARBOR_PASSWORD:0:5}..."
         curl -k -u $HARBOR_USERNAME:$HARBOR_PASSWORD https://192.168.122.100/v2/_catalog
         curl -k -u $HARBOR_USERNAME:$HARBOR_PASSWORD https://192.168.122.100/api/v2.0/projects | jq '.[] | select(.name=="sandbox")'
         
@@ -43,11 +45,29 @@ jobs:
         curl -sL "https://github.com/google/go-containerregistry/releases/latest/download/go-containerregistry_Linux_x86_64.tar.gz" | tar xz -C /tmp
         chmod +x /tmp/crane
         
+        # Docker login（明示的な認証）
+        echo "Docker login実行中..."
+        echo $HARBOR_PASSWORD | docker login 192.168.122.100 -u $HARBOR_USERNAME --password-stdin
+        
         # Crane認証（insecure registry対応）
         export CRANE_INSECURE=true
+        echo "Crane認証 - Username: $HARBOR_USERNAME, Password: ${HARBOR_PASSWORD:0:5}..."
         /tmp/crane auth login 192.168.122.100 -u $HARBOR_USERNAME -p $HARBOR_PASSWORD --insecure
         
-        # latestタグプッシュ
+        # 認証確認
+        echo "Docker config.json内容:"
+        cat ~/.docker/config.json
+        
+        # Harbor catalog確認
+        echo "Harbor catalog確認:"
+        curl -k -u $HARBOR_USERNAME:$HARBOR_PASSWORD https://192.168.122.100/v2/_catalog
+        
+        # Docker pushでテスト
+        echo "Docker pushでテスト中..."
+        docker push 192.168.122.100/sandbox/${{ github.event.repository.name }}:latest || echo "Docker push失敗"
+        
+        # latestタグプッシュ（crane使用）
+        echo "Crane pushでテスト中..."
         docker save 192.168.122.100/sandbox/${{ github.event.repository.name }}:latest -o /tmp/image-latest.tar
         /tmp/crane push /tmp/image-latest.tar 192.168.122.100/sandbox/${{ github.event.repository.name }}:latest --insecure
         
