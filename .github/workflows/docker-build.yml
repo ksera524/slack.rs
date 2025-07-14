@@ -10,17 +10,13 @@ jobs:
   build:
     runs-on: slack-rs-runners 
     
-    steps:
+  steps:
     - name: Checkout code
       uses: actions/checkout@v4
       
     - name: Harbor接続確認
       run: |
         echo "=== Harbor API Connection Test ==="
-        # Harbor認証情報をk8s secretから取得
-        export HARBOR_USERNAME=$(kubectl get secret harbor-auth -n arc-systems -o jsonpath='{.data.HARBOR_USERNAME}' | base64 -d)
-        export HARBOR_PASSWORD=$(kubectl get secret harbor-auth -n arc-systems -o jsonpath='{.data.HARBOR_PASSWORD}' | base64 -d)
-        
         echo "Harbor Username: $HARBOR_USERNAME"
         echo "Harbor Password: ${HARBOR_PASSWORD:0:3}..."
         
@@ -30,10 +26,6 @@ jobs:
     - name: Dockerイメージビルド
       run: |
         echo "=== Docker Image Build ==="
-        
-        # Harbor認証情報をk8s secretから取得
-        export HARBOR_USERNAME=$(kubectl get secret harbor-auth -n arc-systems -o jsonpath='{.data.HARBOR_USERNAME}' | base64 -d)
-        export HARBOR_PASSWORD=$(kubectl get secret harbor-auth -n arc-systems -o jsonpath='{.data.HARBOR_PASSWORD}' | base64 -d)
         
         # Docker認証設定
         mkdir -p ~/.docker
@@ -46,10 +38,6 @@ jobs:
     - name: Harborプッシュ（crane使用）
       run: |
         echo "=== Harbor Push with Crane ==="
-        
-        # Harbor認証情報をk8s secretから取得
-        export HARBOR_USERNAME=$(kubectl get secret harbor-auth -n arc-systems -o jsonpath='{.data.HARBOR_USERNAME}' | base64 -d)
-        export HARBOR_PASSWORD=$(kubectl get secret harbor-auth -n arc-systems -o jsonpath='{.data.HARBOR_PASSWORD}' | base64 -d)
         
         echo "Harbor Username: $HARBOR_USERNAME"
         echo "Harbor Password: ${HARBOR_PASSWORD:0:3}..."
@@ -76,9 +64,6 @@ jobs:
         echo "✅ Harbor push completed successfully"
         
     - name: プッシュ結果確認
-      env:
-        HARBOR_USERNAME: ${{ secrets.HARBOR_USERNAME }}
-        HARBOR_PASSWORD: ${{ secrets.HARBOR_PASSWORD }}
       run: |
         echo "=== Harbor Push Verification ==="
         
