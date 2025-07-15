@@ -10,6 +10,11 @@ jobs:
   build:
     runs-on: slack-rs-runners 
     
+    # 環境変数でk8s Secretから値を注入
+    env:
+      HARBOR_USERNAME: ${{ secrets.HARBOR_USERNAME || 'admin' }}
+      HARBOR_PASSWORD: ${{ secrets.HARBOR_PASSWORD || 'adminadmin' }}
+    
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
@@ -34,19 +39,38 @@ jobs:
       run: |
         echo "=== Retrieving Harbor Credentials ==="
         
-        # k8s Secret から Harbor認証情報を取得（フォールバック付き）
+        # kubectl設定とアクセス権限確認
+        echo "kubectl version:"
+        kubectl version --client --short
+        
+        echo "Current context:"
+        kubectl config current-context || echo "No context set"
+        
+        echo "Available namespaces:"
+        kubectl get namespaces || echo "Cannot list namespaces"
+        
+        echo "Secrets in arc-systems namespace:"
+        kubectl get secrets -n arc-systems || echo "Cannot access arc-systems namespace"
+        
+        # k8s Secret から Harbor認証情報を取得（詳細デバッグ付き）
         if kubectl get secret harbor-auth -n arc-systems >/dev/null 2>&1; then
+            echo "✅ harbor-auth secret found"
+            
+            echo "Secret contents:"
+            kubectl get secret harbor-auth -n arc-systems -o yaml
+            
             export HARBOR_USERNAME=$(kubectl get secret harbor-auth -n arc-systems -o jsonpath='{.data.HARBOR_USERNAME}' | base64 -d)
             export HARBOR_PASSWORD=$(kubectl get secret harbor-auth -n arc-systems -o jsonpath='{.data.HARBOR_PASSWORD}' | base64 -d)
             echo "✅ Retrieved credentials from k8s Secret"
+            echo "Retrieved Username: $HARBOR_USERNAME"
+            echo "Retrieved Password: ${HARBOR_PASSWORD:0:3}..."
         else
-            echo "⚠️  Using fallback credentials"
+            echo "⚠️  harbor-auth secret not found, using fallback credentials"
             export HARBOR_USERNAME="${HARBOR_USERNAME:-admin}"
-            export HARBOR_PASSWORD="${HARBOR_PASSWORD:-Harbor12345}"
+            export HARBOR_PASSWORD="${HARBOR_PASSWORD:-adminadmin}"
+            echo "Fallback Username: $HARBOR_USERNAME"
+            echo "Fallback Password: ${HARBOR_PASSWORD:0:3}..."
         fi
-        
-        echo "Harbor Username: $HARBOR_USERNAME"
-        echo "Harbor Password: ${HARBOR_PASSWORD:0:3}..."
         
         # 環境変数を後続ステップで利用可能にする
         echo "HARBOR_USERNAME=$HARBOR_USERNAME" >> $GITHUB_ENV
