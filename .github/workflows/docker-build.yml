@@ -9,6 +9,9 @@ on:
 jobs:
   build:
     runs-on: slack-rs-runners 
+    env:
+      HARBOR_USERNAME: ${{ env.HARBOR_USERNAME }}
+      HARBOR_PASSWORD: ${{ env.HARBOR_PASSWORD }}
     
     steps:
     - name: Checkout code
