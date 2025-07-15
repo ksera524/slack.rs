@@ -41,10 +41,29 @@ jobs:
         
         # kubectl設定とアクセス権限確認
         echo "kubectl version:"
-        kubectl version --client --short
+        kubectl version --client || echo "kubectl version check failed"
+        
+        # kubeconfig設定確認（GitHub Actions Runnerは既にクラスター内で動作）
+        echo "Checking Kubernetes configuration:"
+        if [ -f /var/run/secrets/kubernetes.io/serviceaccount/token ]; then
+            echo "✅ Running inside Kubernetes cluster"
+            export KUBECONFIG=/var/run/secrets/kubernetes.io/serviceaccount/kubeconfig
+            
+            # In-cluster設定を作成
+            kubectl config set-cluster default --server=https://kubernetes.default.svc --certificate-authority=/var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+            kubectl config set-credentials default --token=$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)
+            kubectl config set-context default --cluster=default --user=default
+            kubectl config use-context default
+        else
+            echo "⚠️  Not running inside Kubernetes cluster, using default config"
+        fi
         
         echo "Current context:"
         kubectl config current-context || echo "No context set"
+        
+        echo "Testing kubectl access:"
+        kubectl auth can-i get secrets -n arc-systems || echo "Cannot access secrets in arc-systems"
+        kubectl auth can-i get secrets -n harbor || echo "Cannot access secrets in harbor"
         
         echo "Available namespaces:"
         kubectl get namespaces || echo "Cannot list namespaces"
@@ -55,9 +74,6 @@ jobs:
         # k8s Secret から Harbor認証情報を取得（詳細デバッグ付き）
         if kubectl get secret harbor-auth -n arc-systems >/dev/null 2>&1; then
             echo "✅ harbor-auth secret found"
-            
-            echo "Secret contents:"
-            kubectl get secret harbor-auth -n arc-systems -o yaml
             
             export HARBOR_USERNAME=$(kubectl get secret harbor-auth -n arc-systems -o jsonpath='{.data.HARBOR_USERNAME}' | base64 -d)
             export HARBOR_PASSWORD=$(kubectl get secret harbor-auth -n arc-systems -o jsonpath='{.data.HARBOR_PASSWORD}' | base64 -d)
