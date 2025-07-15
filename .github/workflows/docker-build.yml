@@ -61,10 +61,10 @@ jobs:
                 echo "✅ harbor-auth secret found, retrieving credentials..."
                 
                 # k8s Secretから認証情報を安全に取得
-                kubectl get secret harbor-auth -n arc-systems -o jsonpath='{.data.HARBOR_USERNAME}' | base64 -d > /tmp/harbor_username
-                kubectl get secret harbor-auth -n arc-systems -o jsonpath='{.data.HARBOR_PASSWORD}' | base64 -d > /tmp/harbor_password
-                kubectl get secret harbor-auth -n arc-systems -o jsonpath='{.data.HARBOR_URL}' | base64 -d > /tmp/harbor_url
-                kubectl get secret harbor-auth -n arc-systems -o jsonpath='{.data.HARBOR_PROJECT}' | base64 -d > /tmp/harbor_project
+                kubectl get secret harbor-auth -n arc-systems -o yaml | grep "HARBOR_USERNAME:" | awk '{print $2}' | base64 -d > /tmp/harbor_username
+                kubectl get secret harbor-auth -n arc-systems -o yaml | grep "HARBOR_PASSWORD:" | awk '{print $2}' | base64 -d > /tmp/harbor_password
+                kubectl get secret harbor-auth -n arc-systems -o yaml | grep "HARBOR_URL:" | awk '{print $2}' | base64 -d > /tmp/harbor_url
+                kubectl get secret harbor-auth -n arc-systems -o yaml | grep "HARBOR_PROJECT:" | awk '{print $2}' | base64 -d > /tmp/harbor_project
                 
                 # ファイル権限を制限
                 chmod 600 /tmp/harbor_username /tmp/harbor_password /tmp/harbor_url /tmp/harbor_project
