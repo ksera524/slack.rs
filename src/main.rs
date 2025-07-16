@@ -10,10 +10,8 @@ use std::env;
 
 #[tokio::main]
 async fn main() {
+    println!("Starting application...");
     dotenvy::dotenv().ok();
-
-    let token = env::var("SLACK_BOT_TOKEN").expect("SLACK_BOT_TOKEN not set");
-    println!("Using SLACK_BOT_TOKEN: {}", &token);
 
     let fmt_layer = fmt::layer().json().with_span_events(FmtSpan::CLOSE);
     let env_filter = EnvFilter::from_default_env();

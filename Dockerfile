@@ -9,7 +9,7 @@ RUN apt-get update && \
     rm -rf /var/lib/apt/lists/*
 
 # Copy manifest files for dependency caching
-COPY Cargo.toml ./
+COPY Cargo.toml Cargo.lock ./
 
 # Create a dummy main.rs to build dependencies
 RUN mkdir -p src && \
@@ -46,4 +46,4 @@ EXPOSE 3000
 ENV RUST_LOG=slack=info,hyper=error,hyper_util=error,reqwest=error,axum::serve=info
 
 # Run the application
-ENTRYPOINT ["./slack"]
+ENTRYPOINT ["/app/slack"]
