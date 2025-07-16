@@ -16,3 +16,7 @@ tokio = { version="1.44.0",features = ["macros","rt-multi-thread"]}
 tower-http = "0.6.2"
 tracing = "0.1.41"
 tracing-subscriber = {version = "0.3.19" , features = ["json","env-filter"]}
+
+
+[build]
+rustflags = []

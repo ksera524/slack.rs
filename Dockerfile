@@ -46,4 +46,4 @@ EXPOSE 3000
 ENV RUST_LOG=slack=info,hyper=error,hyper_util=error,reqwest=error,axum::serve=info
 
 # Run the application
-CMD ["./slack"]
+ENTRYPOINT ["./slack"]
