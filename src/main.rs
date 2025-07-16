@@ -6,7 +6,6 @@ mod errors;
 mod handlers;
 mod routes;
 mod service;
-use std::env;
 
 #[tokio::main]
 async fn main() {
