@@ -30,6 +30,25 @@ jobs:
         kubectl version --client --output=yaml
         
         echo "✅ kubectl インストール完了"
+
+    - name: Setup Docker for Harbor
+      run: |
+        # 証明書検証をスキップする設定
+        mkdir -p ~/.docker
+        echo '{
+          "auths": {
+            "'$HARBOR_URL'": {}
+          },
+          "HttpHeaders": {
+            "User-Agent": "Docker-Client/19.03.12 (linux)"
+          },
+          "credsStore": "",
+          "experimental": "disabled",
+          "stackOrchestrator": "swarm"
+        }' > ~/.docker/config.json
+        
+        # insecure registryとして追加
+        echo "DOCKER_OPTS=\"--insecure-registry $HARBOR_URL\"" | sudo tee -a /etc/default/docker
         
     - name: Harbor認証情報取得
       run: |
