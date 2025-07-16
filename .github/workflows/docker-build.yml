@@ -86,6 +86,8 @@ jobs:
         
         HARBOR_URL=$(cat /tmp/harbor_url)
         HARBOR_PROJECT=$(cat /tmp/harbor_project)
+
+        docker login $HARBOR_URL -u $HARBOR_USERNAME -p $HARBOR_PASSWORD
         
         # Dockerイメージビルド
         docker build -t $HARBOR_URL/$HARBOR_PROJECT/slack.rs:latest .
@@ -104,7 +106,7 @@ jobs:
         
         # Docker pushを試行（insecure registry設定済み）
         echo "Docker pushを試行中..."
-        docker push $HARBOR_URL/$HARBOR_PROJECT/slack.rs:latest && docker push $HARBOR_URL/$HARBOR_PROJECT/slack.rs:latest
+        docker push $HARBOR_URL/$HARBOR_PROJECT/slack.rs:latest
         echo "✅ Docker pushが成功しました"
         
         echo "✅ Harbor Push完了"
