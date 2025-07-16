@@ -46,4 +46,4 @@ EXPOSE 3000
 ENV RUST_LOG=slack=info,hyper=error,hyper_util=error,reqwest=error,axum::serve=info
 RUN chmod +x /app/slack
 # Run the application
-ENTRYPOINT ["/app/slack"]
+CMD ["./slack"]
