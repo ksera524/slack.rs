@@ -80,27 +80,44 @@ jobs:
         # 既存のDocker daemonを完全に停止
         sudo pkill -f dockerd || true
         sudo pkill -f docker-containerd || true
-        sleep 5
+        sudo pkill -f containerd || true
+        sleep 10
         
         # Docker daemonをinsecure registryで起動（強制的にHTTP接続）
+        echo "Docker daemonを起動中..."
         sudo dockerd \
+            --config-file=/etc/docker/daemon.json \
             --insecure-registry=$HARBOR_URL \
             --host=unix:///var/run/docker.sock \
             --host=tcp://0.0.0.0:2375 \
             --tls=false \
             --disable-legacy-registry=false \
-            --registry-mirror= \
-            --log-level=debug &
-        sleep 20
+            --log-level=info &
+        sleep 30
         
         # Docker daemon起動確認
         docker version || (echo "Docker daemon起動失敗" && exit 1)
         
+        # Docker daemon設定確認
+        echo "=== Docker daemon設定ファイル ==="
+        cat /etc/docker/daemon.json
+        
         # Docker info詳細確認
+        echo "=== Docker info（insecure registries） ==="
         docker info | grep -A 10 -B 5 -i insecure || echo "Insecure registry設定なし"
         
-        # Docker daemon設定確認
-        cat /etc/docker/daemon.json
+        # insecure registryが正しく設定されているか確認
+        if docker info | grep -q "$HARBOR_URL"; then
+            echo "✅ insecure registry設定が正しく適用されています"
+        else
+            echo "❌ insecure registry設定が適用されていません"
+            echo "Docker daemon を再起動します..."
+            sudo pkill -f dockerd || true
+            sleep 5
+            sudo dockerd --insecure-registry=$HARBOR_URL --host=unix:///var/run/docker.sock --tls=false &
+            sleep 15
+            docker info | grep -A 10 -B 5 -i insecure || echo "再起動後もinsecure registry設定なし"
+        fi
         
         # Docker認証設定ファイル作成
         mkdir -p ~/.docker
