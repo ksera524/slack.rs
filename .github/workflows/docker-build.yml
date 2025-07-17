@@ -70,6 +70,13 @@ jobs:
         echo "Harbor DNS設定を追加中..."
         echo "$HARBOR_URL harbor.local" | sudo tee -a /etc/hosts
         
+        # Docker daemon設定でinsecure registryを指定
+        echo "Docker daemon設定を更新中..."
+        sudo mkdir -p /etc/docker
+        echo "{\"insecure-registries\": [\"$HARBOR_URL\"]}" | sudo tee /etc/docker/daemon.json
+        sudo systemctl restart docker
+        sleep 5
+        
         # Docker認証設定ファイル作成
         mkdir -p ~/.docker
         echo "{\"auths\":{\"$HARBOR_URL\":{\"auth\":\"$(echo -n \"$HARBOR_USERNAME:$HARBOR_PASSWORD\" | base64 -w 0)\"}},\"credHelpers\":{},\"insecure-registries\":[\"$HARBOR_URL\"]}" > ~/.docker/config.json
