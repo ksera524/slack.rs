@@ -108,10 +108,9 @@ jobs:
         HARBOR_URL=$(cat /tmp/harbor_url)
         HARBOR_PROJECT=$(cat /tmp/harbor_project)
         
-        # Dockerイメージビルド（HTTP registry対応）
-        HTTP_HARBOR_URL="http://$HARBOR_URL"
-        docker build -t $HTTP_HARBOR_URL/$HARBOR_PROJECT/slack.rs:latest .
-        docker build -t $HTTP_HARBOR_URL/$HARBOR_PROJECT/slack.rs:${{ github.sha }} .
+        # Dockerイメージビルド（通常のタグ形式）
+        docker build -t $HARBOR_URL/$HARBOR_PROJECT/slack.rs:latest .
+        docker build -t $HARBOR_URL/$HARBOR_PROJECT/slack.rs:${{ github.sha }} .
         
         echo "✅ Docker Build完了"
         
@@ -147,8 +146,10 @@ jobs:
         echo "Docker loginをHTTPで実行中..."
         echo $HARBOR_PASSWORD | docker login $HTTP_HARBOR_URL -u $HARBOR_USERNAME --password-stdin
         
-        # イメージはすでにHTTP URLでビルド済み
-        echo "イメージは既にHTTP URLでビルド済みです"
+        # イメージをHTTP URLでタグ付け
+        echo "イメージをHTTP URLでタグ付け中..."
+        docker tag $HARBOR_URL/$HARBOR_PROJECT/slack.rs:latest $HTTP_HARBOR_URL/$HARBOR_PROJECT/slack.rs:latest
+        docker tag $HARBOR_URL/$HARBOR_PROJECT/slack.rs:${{ github.sha }} $HTTP_HARBOR_URL/$HARBOR_PROJECT/slack.rs:${{ github.sha }}
         
         # Docker pushをHTTPで実行
         echo "DockerでHTTP接続を使用してHarborにpush中..."
