@@ -144,29 +144,19 @@ jobs:
         export DOCKER_API_VERSION=1.40
         export DOCKER_CONTENT_TRUST=0
         
-        # Harbor HTTP URLを使用
-        HTTP_HARBOR_URL="http://$HARBOR_URL"
-        echo "HTTP Harbor URL: $HTTP_HARBOR_URL"
-        
         # Docker認証設定（config.jsonに直接書き込み）
         echo "Docker認証設定を更新中..."
         mkdir -p ~/.docker
-        echo "{\"auths\":{\"$HARBOR_URL\":{\"auth\":\"$(echo -n \"$HARBOR_USERNAME:$HARBOR_PASSWORD\" | base64 -w 0)\"},\"http://$HARBOR_URL\":{\"auth\":\"$(echo -n \"$HARBOR_USERNAME:$HARBOR_PASSWORD\" | base64 -w 0)\"}},\"credHelpers\":{}}" > ~/.docker/config.json
+        echo "{\"auths\":{\"$HARBOR_URL\":{\"auth\":\"$(echo -n \"$HARBOR_USERNAME:$HARBOR_PASSWORD\" | base64 -w 0)\"}},\"credHelpers\":{}}" > ~/.docker/config.json
         chmod 600 ~/.docker/config.json
         
-        # Docker loginをHTTPで実行（fallback）
-        echo "Docker loginをHTTPで実行中..."
-        echo $HARBOR_PASSWORD | docker login $HTTP_HARBOR_URL -u $HARBOR_USERNAME --password-stdin || echo "Docker login失敗 - config.jsonで認証を試行"
+        # Docker loginをスキップ（config.jsonを使用）
+        echo "Docker認証はconfig.jsonを使用します"
         
-        # イメージをHTTP URLでタグ付け
-        echo "イメージをHTTP URLでタグ付け中..."
-        docker tag $HARBOR_URL/$HARBOR_PROJECT/slack.rs:latest $HTTP_HARBOR_URL/$HARBOR_PROJECT/slack.rs:latest
-        docker tag $HARBOR_URL/$HARBOR_PROJECT/slack.rs:${{ github.sha }} $HTTP_HARBOR_URL/$HARBOR_PROJECT/slack.rs:${{ github.sha }}
-        
-        # Docker pushをHTTPで実行
-        echo "DockerでHTTP接続を使用してHarborにpush中..."
-        docker push $HTTP_HARBOR_URL/$HARBOR_PROJECT/slack.rs:latest
-        docker push $HTTP_HARBOR_URL/$HARBOR_PROJECT/slack.rs:${{ github.sha }}
+        # Docker pushを通常のURLで実行（insecure registryとして）
+        echo "Dockerでinsecure registryとしてHarborにpush中..."
+        docker push $HARBOR_URL/$HARBOR_PROJECT/slack.rs:latest
+        docker push $HARBOR_URL/$HARBOR_PROJECT/slack.rs:${{ github.sha }}
         
         echo "✅ Docker pushが成功しました"
         
@@ -182,8 +172,7 @@ jobs:
         HARBOR_PROJECT=$(cat /tmp/harbor_project)
         
         # プッシュされたイメージ確認（HTTP接続）
-        HTTP_HARBOR_URL="http://$HARBOR_URL"
-        curl -u $HARBOR_USERNAME:$HARBOR_PASSWORD $HTTP_HARBOR_URL/v2/$HARBOR_PROJECT/slack.rs/tags/list
+        curl -u $HARBOR_USERNAME:$HARBOR_PASSWORD http://$HARBOR_URL/v2/$HARBOR_PROJECT/slack.rs/tags/list
         
         echo "✅ デプロイ完了"
         
