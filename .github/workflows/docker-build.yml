@@ -78,9 +78,8 @@ jobs:
         echo "{\"auths\":{\"$HARBOR_URL\":{\"auth\":\"$(echo -n \"$HARBOR_USERNAME:$HARBOR_PASSWORD\" | base64 -w 0)\"}},\"credHelpers\":{}}" > ~/.docker/config.json
         chmod 600 ~/.docker/config.json
         
-        # Docker環境変数でinsecure registryを指定
+        # Docker環境変数でinsecure registryを指定（DinD環境対応）
         export DOCKER_CONTENT_TRUST=0
-        export DOCKER_TLS_VERIFY=0
         
         echo "✅ Harbor Login & Docker設定完了"
         
@@ -106,11 +105,12 @@ jobs:
         HARBOR_USERNAME=$(cat /tmp/harbor_username)
         HARBOR_PASSWORD=$(cat /tmp/harbor_password)
         
-        # Docker環境変数でinsecure registryを指定
+        # Docker環境変数でinsecure registryを指定（DinD環境対応）
         export DOCKER_CONTENT_TRUST=0
-        export DOCKER_TLS_VERIFY=0
         
-        echo $HARBOR_PASSWORD | docker login $HARBOR_URL -u $HARBOR_USERNAME --password-stdin
+        # HTTP接続を試行（Harbor HTTP Ingress経由）
+        echo $HARBOR_PASSWORD | docker login $HARBOR_URL -u $HARBOR_USERNAME --password-stdin 2>/dev/null || \
+        echo $HARBOR_PASSWORD | docker login http://$HARBOR_URL -u $HARBOR_USERNAME --password-stdin
         
         # Docker pushを試行（insecure registry設定済み）
         echo "Docker pushを試行中..."
