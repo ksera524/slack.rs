@@ -75,27 +75,32 @@ jobs:
         
         # Docker daemon設定を更新（DinD環境）
         sudo mkdir -p /etc/docker
-        echo "{\"insecure-registries\": [\"$HARBOR_URL\", \"http://$HARBOR_URL\"], \"registry-mirrors\": []}" | sudo tee /etc/docker/daemon.json > /dev/null
+        echo "{\"insecure-registries\": [\"$HARBOR_URL\"], \"registry-mirrors\": []}" | sudo tee /etc/docker/daemon.json > /dev/null
         
-        # Docker daemon再起動（DinD環境）
+        # 既存のDocker daemonを完全に停止
         sudo pkill -f dockerd || true
-        sleep 3
+        sudo pkill -f docker-containerd || true
+        sleep 5
         
-        # Docker daemonをinsecure registryで起動（複数のフラグを追加）
+        # Docker daemonをinsecure registryで起動（強制的にHTTP接続）
         sudo dockerd \
             --insecure-registry=$HARBOR_URL \
-            --insecure-registry=http://$HARBOR_URL \
             --host=unix:///var/run/docker.sock \
             --host=tcp://0.0.0.0:2375 \
             --tls=false \
-            --disable-legacy-registry=false &
-        sleep 15
+            --disable-legacy-registry=false \
+            --registry-mirror= \
+            --log-level=debug &
+        sleep 20
         
         # Docker daemon起動確認
         docker version || (echo "Docker daemon起動失敗" && exit 1)
         
-        # Docker info確認
-        docker info | grep -i insecure || echo "Insecure registry設定なし"
+        # Docker info詳細確認
+        docker info | grep -A 10 -B 5 -i insecure || echo "Insecure registry設定なし"
+        
+        # Docker daemon設定確認
+        cat /etc/docker/daemon.json
         
         # Docker認証設定ファイル作成
         mkdir -p ~/.docker
@@ -153,10 +158,20 @@ jobs:
         # Docker loginをスキップ（config.jsonを使用）
         echo "Docker認証はconfig.jsonを使用します"
         
+        # HTTPプロトコルを強制するためのデバッグ情報
+        echo "Docker daemon insecure registries設定確認:"
+        docker info | grep -A 5 "Insecure Registries" || echo "Insecure registries設定が見つかりません"
+        
+        # Docker pushを実行する前にHarborエンドポイントをテスト
+        echo "Harbor HTTP エンドポイントをテスト中..."
+        curl -s -I http://$HARBOR_URL/v2/ || echo "Harbor HTTP接続テスト失敗"
+        
         # Docker pushを通常のURLで実行（insecure registryとして）
         echo "Dockerでinsecure registryとしてHarborにpush中..."
-        docker push $HARBOR_URL/$HARBOR_PROJECT/slack.rs:latest
-        docker push $HARBOR_URL/$HARBOR_PROJECT/slack.rs:${{ github.sha }}
+        echo "推す対象: $HARBOR_URL/$HARBOR_PROJECT/slack.rs:latest"
+        docker push $HARBOR_URL/$HARBOR_PROJECT/slack.rs:latest || echo "latest push失敗"
+        echo "推す対象: $HARBOR_URL/$HARBOR_PROJECT/slack.rs:${{ github.sha }}"
+        docker push $HARBOR_URL/$HARBOR_PROJECT/slack.rs:${{ github.sha }} || echo "commit hash push失敗"
         
         echo "✅ Docker pushが成功しました"
         
