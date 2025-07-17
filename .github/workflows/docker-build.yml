@@ -70,56 +70,8 @@ jobs:
         echo "Harbor DNS設定を追加中..."
         echo "$HARBOR_URL harbor.local" | sudo tee -a /etc/hosts
         
-        # Docker設定（DinD環境対応）
-        echo "Docker設定を更新中..."
-        
-        # Docker daemon設定を更新（DinD環境）
-        sudo mkdir -p /etc/docker
-        echo "{\"insecure-registries\": [\"$HARBOR_URL\"], \"registry-mirrors\": []}" | sudo tee /etc/docker/daemon.json > /dev/null
-        
-        # 既存のDocker daemonを完全に停止
-        sudo pkill -f dockerd || true
-        sudo pkill -f docker-containerd || true
-        sudo pkill -f containerd || true
-        sleep 10
-        
-        # Docker daemonをinsecure registryで起動（強制的にHTTP接続）
-        echo "Docker daemonを起動中..."
-        sudo dockerd \
-            --config-file=/etc/docker/daemon.json \
-            --insecure-registry=$HARBOR_URL \
-            --host=unix:///var/run/docker.sock \
-            --host=tcp://0.0.0.0:2375 \
-            --tls=false \
-            --disable-legacy-registry=false \
-            --log-level=info &
-        sleep 30
-        
-        # Docker daemon起動確認
-        docker version || (echo "Docker daemon起動失敗" && exit 1)
-        
-        # Docker daemon設定確認
-        echo "=== Docker daemon設定ファイル ==="
-        cat /etc/docker/daemon.json
-        
-        # Docker info詳細確認
-        echo "=== Docker info（insecure registries） ==="
-        docker info | grep -A 10 -B 5 -i insecure || echo "Insecure registry設定なし"
-        
-        # insecure registryが正しく設定されているか確認
-        if docker info | grep -q "$HARBOR_URL"; then
-            echo "✅ insecure registry設定が正しく適用されています"
-        else
-            echo "❌ insecure registry設定が適用されていません"
-            echo "Docker daemon を再起動します..."
-            sudo pkill -f dockerd || true
-            sleep 5
-            sudo dockerd --insecure-registry=$HARBOR_URL --host=unix:///var/run/docker.sock --tls=false &
-            sleep 15
-            docker info | grep -A 10 -B 5 -i insecure || echo "再起動後もinsecure registry設定なし"
-        fi
-        
-        # Docker認証設定ファイル作成
+        # Docker認証設定
+        echo "Docker認証設定を更新中..."
         mkdir -p ~/.docker
         echo "{\"auths\":{\"$HARBOR_URL\":{\"auth\":\"$(echo -n \"$HARBOR_USERNAME:$HARBOR_PASSWORD\" | base64 -w 0)\"}},\"credHelpers\":{}}" > ~/.docker/config.json
         chmod 600 ~/.docker/config.json
@@ -183,29 +135,16 @@ jobs:
         echo "Harbor HTTP エンドポイントをテスト中..."
         curl -s -I http://$HARBOR_URL/v2/ || echo "Harbor HTTP接続テスト失敗"
         
-        # skopeoを使用してHTTP接続でpush
-        echo "skopeoを使用してHTTP接続でHarborにpush中..."
+        # Docker pushを実行（insecure registryとして）
+        echo "Docker pushでHarborにpush中..."
+        echo "insecure registry設定確認:"
+        docker info | grep -A 5 "Insecure Registries" || echo "insecure registry設定なし"
         
-        # skopeoをインストール
-        if ! command -v skopeo &> /dev/null; then
-            echo "skopeoをインストール中..."
-            sudo apt-get update -y
-            sudo apt-get install -y skopeo
-        fi
-        
-        # skopeoでHTTP接続を使用してpush
-        echo "skopeoでHTTP接続を使用してpush中..."
         echo "推す対象: $HARBOR_URL/$HARBOR_PROJECT/slack.rs:latest"
-        skopeo copy --insecure-policy --src-tls-verify=false --dest-tls-verify=false \
-            --dest-creds=$HARBOR_USERNAME:$HARBOR_PASSWORD \
-            docker-daemon:$HARBOR_URL/$HARBOR_PROJECT/slack.rs:latest \
-            docker://$HARBOR_URL/$HARBOR_PROJECT/slack.rs:latest || echo "latest push失敗"
-            
+        docker push $HARBOR_URL/$HARBOR_PROJECT/slack.rs:latest
+        
         echo "推す対象: $HARBOR_URL/$HARBOR_PROJECT/slack.rs:${{ github.sha }}"
-        skopeo copy --insecure-policy --src-tls-verify=false --dest-tls-verify=false \
-            --dest-creds=$HARBOR_USERNAME:$HARBOR_PASSWORD \
-            docker-daemon:$HARBOR_URL/$HARBOR_PROJECT/slack.rs:${{ github.sha }} \
-            docker://$HARBOR_URL/$HARBOR_PROJECT/slack.rs:${{ github.sha }} || echo "commit hash push失敗"
+        docker push $HARBOR_URL/$HARBOR_PROJECT/slack.rs:${{ github.sha }}
         
         echo "✅ Docker pushが成功しました"
         
