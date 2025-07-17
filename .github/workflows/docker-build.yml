@@ -75,15 +75,21 @@ jobs:
         
         # Docker daemon設定を更新（DinD環境）
         sudo mkdir -p /etc/docker
-        echo "{\"insecure-registries\": [\"$HARBOR_URL\"], \"registry-mirrors\": []}" | sudo tee /etc/docker/daemon.json > /dev/null
+        echo "{\"insecure-registries\": [\"$HARBOR_URL\", \"http://$HARBOR_URL\"], \"registry-mirrors\": []}" | sudo tee /etc/docker/daemon.json > /dev/null
         
         # Docker daemon再起動（DinD環境）
         sudo pkill -f dockerd || true
         sleep 3
         
-        # Docker daemonをinsecure registryで起動
-        sudo dockerd --insecure-registry=$HARBOR_URL --host=unix:///var/run/docker.sock --host=tcp://0.0.0.0:2375 --tls=false &
-        sleep 10
+        # Docker daemonをinsecure registryで起動（複数のフラグを追加）
+        sudo dockerd \
+            --insecure-registry=$HARBOR_URL \
+            --insecure-registry=http://$HARBOR_URL \
+            --host=unix:///var/run/docker.sock \
+            --host=tcp://0.0.0.0:2375 \
+            --tls=false \
+            --disable-legacy-registry=false &
+        sleep 15
         
         # Docker daemon起動確認
         docker version || (echo "Docker daemon起動失敗" && exit 1)
@@ -142,9 +148,15 @@ jobs:
         HTTP_HARBOR_URL="http://$HARBOR_URL"
         echo "HTTP Harbor URL: $HTTP_HARBOR_URL"
         
-        # Docker loginをHTTPで実行
+        # Docker認証設定（config.jsonに直接書き込み）
+        echo "Docker認証設定を更新中..."
+        mkdir -p ~/.docker
+        echo "{\"auths\":{\"$HARBOR_URL\":{\"auth\":\"$(echo -n \"$HARBOR_USERNAME:$HARBOR_PASSWORD\" | base64 -w 0)\"},\"http://$HARBOR_URL\":{\"auth\":\"$(echo -n \"$HARBOR_USERNAME:$HARBOR_PASSWORD\" | base64 -w 0)\"}},\"credHelpers\":{}}" > ~/.docker/config.json
+        chmod 600 ~/.docker/config.json
+        
+        # Docker loginをHTTPで実行（fallback）
         echo "Docker loginをHTTPで実行中..."
-        echo $HARBOR_PASSWORD | docker login $HTTP_HARBOR_URL -u $HARBOR_USERNAME --password-stdin
+        echo $HARBOR_PASSWORD | docker login $HTTP_HARBOR_URL -u $HARBOR_USERNAME --password-stdin || echo "Docker login失敗 - config.jsonで認証を試行"
         
         # イメージをHTTP URLでタグ付け
         echo "イメージをHTTP URLでタグ付け中..."
