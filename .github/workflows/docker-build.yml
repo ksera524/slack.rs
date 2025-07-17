@@ -183,12 +183,29 @@ jobs:
         echo "Harbor HTTP エンドポイントをテスト中..."
         curl -s -I http://$HARBOR_URL/v2/ || echo "Harbor HTTP接続テスト失敗"
         
-        # Docker pushを通常のURLで実行（insecure registryとして）
-        echo "Dockerでinsecure registryとしてHarborにpush中..."
+        # skopeoを使用してHTTP接続でpush
+        echo "skopeoを使用してHTTP接続でHarborにpush中..."
+        
+        # skopeoをインストール
+        if ! command -v skopeo &> /dev/null; then
+            echo "skopeoをインストール中..."
+            sudo apt-get update -y
+            sudo apt-get install -y skopeo
+        fi
+        
+        # skopeoでHTTP接続を使用してpush
+        echo "skopeoでHTTP接続を使用してpush中..."
         echo "推す対象: $HARBOR_URL/$HARBOR_PROJECT/slack.rs:latest"
-        docker push $HARBOR_URL/$HARBOR_PROJECT/slack.rs:latest || echo "latest push失敗"
+        skopeo copy --insecure-policy --src-tls-verify=false --dest-tls-verify=false \
+            --dest-creds=$HARBOR_USERNAME:$HARBOR_PASSWORD \
+            docker-daemon:$HARBOR_URL/$HARBOR_PROJECT/slack.rs:latest \
+            docker://$HARBOR_URL/$HARBOR_PROJECT/slack.rs:latest || echo "latest push失敗"
+            
         echo "推す対象: $HARBOR_URL/$HARBOR_PROJECT/slack.rs:${{ github.sha }}"
-        docker push $HARBOR_URL/$HARBOR_PROJECT/slack.rs:${{ github.sha }} || echo "commit hash push失敗"
+        skopeo copy --insecure-policy --src-tls-verify=false --dest-tls-verify=false \
+            --dest-creds=$HARBOR_USERNAME:$HARBOR_PASSWORD \
+            docker-daemon:$HARBOR_URL/$HARBOR_PROJECT/slack.rs:${{ github.sha }} \
+            docker://$HARBOR_URL/$HARBOR_PROJECT/slack.rs:${{ github.sha }} || echo "commit hash push失敗"
         
         echo "✅ Docker pushが成功しました"
         
