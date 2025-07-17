@@ -31,6 +31,7 @@ async fn main() {
 
     tracing::info!("Starting server on {}", addr);
 
-    let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
-    axum::serve(listener, app).await.unwrap();
+    let listener = tokio::net::TcpListener::bind(addr).await.expect("Failed to bind to address");
+    tracing::info!("Server bound to address, starting to serve...");
+    axum::serve(listener, app).await.expect("Failed to serve application");
 }
