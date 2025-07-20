@@ -70,6 +70,16 @@ jobs:
         echo "Harbor DNS設定を追加中..."
         echo "$HARBOR_URL harbor.local" | sudo tee -a /etc/hosts
         
+        # Harbor認証情報デバッグ
+        echo "Harbor認証情報確認中..."
+        echo "Username: $HARBOR_USERNAME"
+        echo "Password length: ${#HARBOR_PASSWORD}"
+        echo "URL: $HARBOR_URL"
+        
+        # Harbor認証テスト
+        echo "Harbor認証テスト中..."
+        curl -u $HARBOR_USERNAME:$HARBOR_PASSWORD "http://$HARBOR_URL/api/v2.0/users/current" || echo "Harbor認証失敗"
+        
         # Docker認証設定
         echo "Docker認証設定を更新中..."
         mkdir -p ~/.docker
@@ -81,6 +91,42 @@ jobs:
         
         echo "✅ Harbor Login & Docker設定完了"
         
+    - name: ARC環境詳細調査
+      run: |
+        echo "=== ARC環境詳細調査 ==="
+        
+        # 実行環境の詳細情報
+        echo "▶ システム情報:"
+        uname -a
+        
+        echo "▶ CPU情報:"
+        lscpu | head -15
+        
+        echo "▶ CPU機能フラグ（重要）:"
+        cat /proc/cpuinfo | grep flags | head -1
+        
+        echo "▶ CPU種別:"
+        cat /proc/cpuinfo | grep "model name" | head -1
+        
+        echo "▶ メモリ情報:"
+        free -h
+        
+        echo "▶ Docker環境情報:"
+        docker info | head -20
+        
+        echo "▶ 環境変数（重要なもの）:"
+        env | grep -E "(DOCKER|RUNNER|KUBERNETES|PATH)" | head -20
+        
+        echo "▶ アーキテクチャ確認:"
+        arch
+        dpkg --print-architecture || echo "dpkg not available"
+        
+        echo "▶ 仮想化検出:"
+        systemd-detect-virt || echo "systemd-detect-virt not available"
+        
+        echo "▶ Rustターゲット確認:"
+        rustc --print target-list | grep x86_64 | head -5 || echo "rustc not available yet"
+
     - name: Docker Build
       run: |
         echo "=== Docker Build ==="
@@ -88,9 +134,39 @@ jobs:
         HARBOR_URL=$(cat /tmp/harbor_url)
         HARBOR_PROJECT=$(cat /tmp/harbor_project)
         
-        # Dockerイメージビルド（通常のタグ形式）
-        docker build -t $HARBOR_URL/$HARBOR_PROJECT/slack.rs:latest .
-        docker build -t $HARBOR_URL/$HARBOR_PROJECT/slack.rs:${{ github.sha }} .
+        # Dockerイメージビルド前にDockerfileの確認
+        echo "Dockerfileの内容確認:"
+        cat Dockerfile | head -20
+        
+        # バイナリファイル情報デバッグ（存在する場合）
+        if [[ -f "./slack" ]]; then
+            echo "既存のslackバイナリファイル情報:"
+            file ./slack
+            ldd ./slack 2>/dev/null || echo "静的リンク済み、または ldd 利用不可"
+        fi
+        
+        # ビルド環境の詳細ログ
+        echo "=== ビルド環境詳細 ==="
+        echo "Docker version:"
+        docker version
+        echo "Docker daemon info:"
+        docker info | grep -E "(OS|Architecture|Kernel|Docker Root Dir)"
+        
+        # CPU機能互換性のためのビルド環境変数設定
+        export RUSTFLAGS="-C target-cpu=x86-64 -C target-feature=-aes,-avx,-avx2"
+        echo "RUSTFLAGS設定: $RUSTFLAGS"
+        
+        # Dockerイメージビルド（アーキテクチャ指定と継続実行対策）
+        docker build --platform linux/amd64 --build-arg RUSTFLAGS="$RUSTFLAGS" -t $HARBOR_URL/$HARBOR_PROJECT/slack.rs:latest .
+        docker build --platform linux/amd64 --build-arg RUSTFLAGS="$RUSTFLAGS" -t $HARBOR_URL/$HARBOR_PROJECT/slack.rs:${{ github.sha }} .
+        
+        # ビルド後のイメージ内バイナリ確認
+        echo "ビルド後のイメージ内バイナリ確認:"
+        docker run --rm --platform linux/amd64 $HARBOR_URL/$HARBOR_PROJECT/slack.rs:latest ls -la /app/slack
+        
+        # バイナリの詳細実行テスト
+        echo "=== バイナリ実行テスト（ARC環境内） ==="
+        docker run --rm --platform linux/amd64 $HARBOR_URL/$HARBOR_PROJECT/slack.rs:latest sh -c "echo 'Starting slack test in ARC container...'; timeout 10 /app/slack 2>&1 || echo 'Exit code: $?'; echo 'Test completed'"
         
         echo "✅ Docker Build完了"
         
@@ -118,13 +194,14 @@ jobs:
         export DOCKER_API_VERSION=1.40
         export DOCKER_CONTENT_TRUST=0
         
-        # Docker loginで認証（最も確実な方法）
-        echo "Docker loginを実行中..."
-        echo "$HARBOR_PASSWORD" | docker login $HARBOR_URL -u $HARBOR_USERNAME --password-stdin
+        # Docker認証設定（config.jsonに直接書き込み）
+        echo "Docker認証設定を更新中..."
+        mkdir -p ~/.docker
+        echo "{\"auths\":{\"$HARBOR_URL\":{\"auth\":\"$(echo -n \"$HARBOR_USERNAME:$HARBOR_PASSWORD\" | base64 -w 0)\"}},\"credHelpers\":{}}" > ~/.docker/config.json
+        chmod 600 ~/.docker/config.json
         
-        # Docker認証設定を確認
-        echo "Docker認証設定の確認:"
-        docker system info | grep -A 10 "Registry:" || echo "Registry情報なし"
+        # Docker loginをスキップ（config.jsonを使用）
+        echo "Docker認証はconfig.jsonを使用します"
         
         # HTTPプロトコルを強制するためのデバッグ情報
         echo "Docker daemon insecure registries設定確認:"
