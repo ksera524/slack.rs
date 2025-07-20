@@ -20,8 +20,13 @@ RUN mkdir -p src && \
 # Copy the actual source code
 COPY . .
 
-# Build the application
-RUN cargo build --release
+# Build arguments for CPU compatibility
+ARG RUSTFLAGS="-C target-cpu=x86-64 -C target-feature=-aes,-avx,-avx2"
+ENV RUSTFLAGS=${RUSTFLAGS}
+
+# Build the application with CPU compatibility
+RUN echo "Building with RUSTFLAGS: $RUSTFLAGS" && \
+    cargo build --release
 
 # Runtime stage
 FROM debian:bookworm-slim
