@@ -41,14 +41,9 @@ RUN apt-get update && \
 # Copy the binary from the builder stage
 COPY --from=builder /usr/src/app/target/release/slack /app/slack
 
-# Copy necessary config files if needed
-# COPY --from=builder /usr/src/app/config /app/config
-
 # Expose the port your application listens on
 EXPOSE 3000
 
-# Set environment variables (customize as needed)
-ENV RUST_LOG=slack=info,hyper=error,hyper_util=error,reqwest=error,axum::serve=info
 RUN chmod +x /app/slack
 # Run the application
 CMD ["./slack"]
