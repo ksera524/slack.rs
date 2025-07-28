@@ -146,9 +146,12 @@ jobs:
         echo "{\"auths\":{\"$HARBOR_URL\":{\"auth\":\"$(echo -n \"$HARBOR_USERNAME:$HARBOR_PASSWORD\" | base64 -w 0)\"}},\"credHelpers\":{}}" > ~/.docker/config.json
         chmod 600 ~/.docker/config.json
         
-        # Docker login実行（明示的な認証）
+        # Docker login実行（明示的な認証 - HTTP接続）
         echo "Docker login実行中..."
-        echo "$HARBOR_PASSWORD" | docker login $HARBOR_URL --username "$HARBOR_USERNAME" --password-stdin
+        echo "$HARBOR_PASSWORD" | docker login $HARBOR_URL --username "$HARBOR_USERNAME" --password-stdin || {
+          echo "HTTPS接続失敗。HTTP接続を試行中..."
+          echo "$HARBOR_PASSWORD" | docker login http://$HARBOR_URL --username "$HARBOR_USERNAME" --password-stdin
+        }
         
         # HTTPプロトコルを強制するためのデバッグ情報
         echo "Docker daemon insecure registries設定確認:"
@@ -168,10 +171,18 @@ jobs:
         docker info | grep -A 5 "Insecure Registries" || echo "insecure registry設定なし"
         
         echo "推す対象: $HARBOR_URL/$HARBOR_PROJECT/slack.rs:latest"
-        docker push $HARBOR_URL/$HARBOR_PROJECT/slack.rs:latest
+        docker push $HARBOR_URL/$HARBOR_PROJECT/slack.rs:latest || {
+          echo "HTTPS Push失敗。HTTPでのPushを試行中..."
+          docker tag $HARBOR_URL/$HARBOR_PROJECT/slack.rs:latest http://$HARBOR_URL/$HARBOR_PROJECT/slack.rs:latest
+          docker push http://$HARBOR_URL/$HARBOR_PROJECT/slack.rs:latest
+        }
         
         echo "推す対象: $HARBOR_URL/$HARBOR_PROJECT/slack.rs:${{ github.sha }}"
-        docker push $HARBOR_URL/$HARBOR_PROJECT/slack.rs:${{ github.sha }}
+        docker push $HARBOR_URL/$HARBOR_PROJECT/slack.rs:${{ github.sha }} || {
+          echo "HTTPS Push失敗。HTTPでのPushを試行中..."
+          docker tag $HARBOR_URL/$HARBOR_PROJECT/slack.rs:${{ github.sha }} http://$HARBOR_URL/$HARBOR_PROJECT/slack.rs:${{ github.sha }}
+          docker push http://$HARBOR_URL/$HARBOR_PROJECT/slack.rs:${{ github.sha }}
+        }
         
         echo "✅ Docker pushが成功しました"
         
