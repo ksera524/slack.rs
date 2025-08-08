@@ -1,43 +1,26 @@
-# GitHub Actions workflow for slack.rs with Harbor HTTPS - Ultimate Fix
-# 自己署名CA証明書対応の最終版
+# GitHub Actions workflow for slack.rs - Simple CA Certificate Approach
+# 最もシンプルなHarbor CA証明書配布アプローチ
 
-name: slack.rs Harbor HTTPS Ultimate v8
+name: slack.rs Simple CA Certificate
 
 on:
-  workflow_dispatch:  # Manual trigger
+  workflow_dispatch:
   push:
-    branches: [ master,main, develop ]
-  pull_request:
-    branches: [ main ]
+    branches: [ master, main, develop ]
 
 jobs:
   build-and-push:
-    runs-on: slack.rs-runners  # Custom Runner Scale Set
+    runs-on: slack.rs-runners
     
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
       
-    - name: システム設定とkubectl インストール
+    - name: Harbor証明書セットアップ
       run: |
-        echo "=== システム設定とkubectl インストール ==="
+        echo "=== Harbor証明書セットアップ ==="
         
-        # kubectl の最新版をインストール
-        curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
-        chmod +x kubectl
-        sudo mv kubectl /usr/local/bin/
-        
-        # システム証明書関連パッケージのインストール
-        sudo apt-get update -qq
-        sudo apt-get install -y ca-certificates openssl jq
-        
-        echo "✅ システム設定とkubectl インストール完了"
-        
-    - name: Harbor認証情報とCA証明書設定
-      run: |
-        echo "=== Harbor認証情報とCA証明書設定 ==="
-        
-        # kubectl in-cluster設定
+        # kubectl設定
         export KUBECONFIG=/tmp/kubeconfig
         kubectl config set-cluster default \
             --server=https://kubernetes.default.svc \
@@ -57,165 +40,79 @@ jobs:
         kubectl get secret harbor-auth -n arc-systems -o yaml | grep "HARBOR_URL:" | awk '{print $2}' | base64 -d > /tmp/harbor_url
         kubectl get secret harbor-auth -n arc-systems -o yaml | grep "HARBOR_PROJECT:" | awk '{print $2}' | base64 -d > /tmp/harbor_project
         
-        chmod 600 /tmp/harbor_*
-        
         HARBOR_URL=$(cat /tmp/harbor_url)
         
-        # Harbor CA証明書取得と詳細確認
-        echo "Harbor CA証明書を取得中..."
+        # Harbor CA証明書取得
         kubectl get secret harbor-tls-secret -n arc-systems -o jsonpath='{.data.ca\.crt}' | base64 -d > /tmp/harbor-ca.crt
         
-        if [ ! -s /tmp/harbor-ca.crt ]; then
-          echo "❌ CA証明書の取得に失敗"
-          exit 1
-        fi
+        echo "CA証明書取得: $(wc -c < /tmp/harbor-ca.crt) bytes"
         
-        echo "✅ CA証明書取得成功 ($(wc -c < /tmp/harbor-ca.crt) bytes)"
-        
-        # 証明書の詳細確認
-        echo "=== 証明書詳細 ==="
-        openssl x509 -in /tmp/harbor-ca.crt -text -noout | head -20
-        
-        # /etc/hosts設定
-        echo "$HARBOR_URL harbor.local" | sudo tee -a /etc/hosts
-        
-        echo "✅ Harbor認証情報とCA証明書設定完了"
-        
-    - name: Docker証明書設定とログイン
-      run: |
-        echo "=== Docker証明書設定とログイン ==="
-        
-        HARBOR_USERNAME=$(cat /tmp/harbor_username)
-        HARBOR_PASSWORD=$(cat /tmp/harbor_password)
-        HARBOR_URL=$(cat /tmp/harbor_url)
-        
-        # Docker用証明書ディレクトリ作成と証明書配置
+        # Docker用証明書ディレクトリ作成
         sudo mkdir -p /etc/docker/certs.d/$HARBOR_URL
-        sudo mkdir -p /etc/docker/certs.d/harbor.local
-        
-        # CA証明書をコピー
         sudo cp /tmp/harbor-ca.crt /etc/docker/certs.d/$HARBOR_URL/ca.crt
-        sudo cp /tmp/harbor-ca.crt /etc/docker/certs.d/harbor.local/ca.crt
         sudo chmod 644 /etc/docker/certs.d/$HARBOR_URL/ca.crt
-        sudo chmod 644 /etc/docker/certs.d/harbor.local/ca.crt
         
-        # システムCA証明書ストアに追加
+        # システム証明書ストアに追加
         sudo cp /tmp/harbor-ca.crt /usr/local/share/ca-certificates/harbor.crt
         sudo update-ca-certificates
         
-        # Docker daemon設定（自己署名証明書対応）
-        echo "Docker daemon設定を更新中..."
-        sudo mkdir -p /etc/docker
-        cat > /tmp/daemon.json << 'EOF'
-{
-  "disable-legacy-registry": false,
-  "max-concurrent-downloads": 3,
-  "max-concurrent-uploads": 5,
-  "log-driver": "json-file",
-  "log-opts": {
-    "max-size": "10m"
-  }
-}
-EOF
-        sudo cp /tmp/daemon.json /etc/docker/daemon.json
+        echo "✅ Harbor証明書セットアップ完了"
         
-        # Docker設定確認
-        echo "Docker証明書配置確認:"
-        ls -la /etc/docker/certs.d/$HARBOR_URL/
-        
-        # Harbor HTTPS接続テスト
-        echo "Harbor HTTPS接続テスト中..."
-        if curl --cacert /tmp/harbor-ca.crt -H "Host: harbor.local" -s https://$HARBOR_URL/v2/ | grep -q "unauthorized"; then
-          echo "✅ Harbor HTTPS接続成功"
-        else
-          echo "⚠️ Harbor HTTPS接続テスト結果を確認中..."
-          curl --cacert /tmp/harbor-ca.crt -H "Host: harbor.local" -v https://$HARBOR_URL/v2/
-        fi
-        
-        # Docker認証設定
-        mkdir -p ~/.docker
-        echo "{\"auths\":{\"$HARBOR_URL\":{\"auth\":\"$(echo -n \"$HARBOR_USERNAME:$HARBOR_PASSWORD\" | base64 -w 0)\"},\"harbor.local\":{\"auth\":\"$(echo -n \"$HARBOR_USERNAME:$HARBOR_PASSWORD\" | base64 -w 0)\"}},\"credHelpers\":{}}" > ~/.docker/config.json
-        chmod 600 ~/.docker/config.json
-        
-        # 環境変数設定
-        export DOCKER_CONTENT_TRUST=0
-        
-        # Docker login実行（複数方式でリトライ）
-        echo "Docker login実行中..."
-        
-        # 方式1: HTTPS URL指定
-        if echo "$HARBOR_PASSWORD" | docker login https://$HARBOR_URL --username "$HARBOR_USERNAME" --password-stdin 2>/dev/null; then
-          echo "✅ HTTPS URL Docker login成功"
-        elif echo "$HARBOR_PASSWORD" | docker login $HARBOR_URL --username "$HARBOR_USERNAME" --password-stdin 2>/dev/null; then
-          echo "✅ 標準 Docker login成功"  
-        else
-          echo "❌ Docker login失敗"
-          echo "詳細エラー情報:"
-          echo "$HARBOR_PASSWORD" | docker login $HARBOR_URL --username "$HARBOR_USERNAME" --password-stdin
-          exit 1
-        fi
-        
-        echo "✅ Docker証明書設定とログイン完了"
-        
-    - name: Docker Build
+    - name: Docker Login
       run: |
-        echo "=== Docker Build ==="
-        
-        HARBOR_URL=$(cat /tmp/harbor_url)
-        HARBOR_PROJECT=$(cat /tmp/harbor_project)
-        
-        # Dockerイメージビルド
-        docker build -t $HARBOR_URL/$HARBOR_PROJECT/slack.rs:latest .
-        docker build -t $HARBOR_URL/$HARBOR_PROJECT/slack.rs:${{ github.sha }} .
-        
-        # ビルドされたイメージを確認
-        docker images | grep slack.rs
-        
-        echo "✅ Docker Build完了"
-        
-    - name: Harbor Push
-      run: |
-        echo "=== Harbor Push ==="
-        
-        HARBOR_URL=$(cat /tmp/harbor_url)
-        HARBOR_PROJECT=$(cat /tmp/harbor_project)
-        
-        # 環境変数設定
-        export DOCKER_CONTENT_TRUST=0
-        
-        # Docker pushを実行
-        echo "Docker push実行中..."
-        
-        echo "推す対象: $HARBOR_URL/$HARBOR_PROJECT/slack.rs:latest"
-        docker push $HARBOR_URL/$HARBOR_PROJECT/slack.rs:latest
-        
-        echo "推す対象: $HARBOR_URL/$HARBOR_PROJECT/slack.rs:${{ github.sha }}"
-        docker push $HARBOR_URL/$HARBOR_PROJECT/slack.rs:${{ github.sha }}
-        
-        echo "✅ Docker pushが成功しました"
-        echo "✅ Harbor Push完了"
-        
-    - name: プッシュ結果確認
-      run: |
-        echo "=== プッシュ結果確認 ==="
+        echo "=== Docker Login ==="
         
         HARBOR_USERNAME=$(cat /tmp/harbor_username)
         HARBOR_PASSWORD=$(cat /tmp/harbor_password)
         HARBOR_URL=$(cat /tmp/harbor_url)
+        
+        # Docker config作成
+        mkdir -p ~/.docker
+        echo "{\"auths\":{\"$HARBOR_URL\":{\"auth\":\"$(echo -n \"$HARBOR_USERNAME:$HARBOR_PASSWORD\" | base64 -w 0)\"}},\"credHelpers\":{}}" > ~/.docker/config.json
+        chmod 600 ~/.docker/config.json
+        
+        # HTTPS接続テスト
+        echo "Harbor HTTPS接続テスト:"
+        curl -I https://$HARBOR_URL/v2/ 2>&1
+        
+        # Docker login
+        echo "Docker login実行:"
+        echo "$HARBOR_PASSWORD" | docker login $HARBOR_URL --username "$HARBOR_USERNAME" --password-stdin
+        
+        echo "✅ Docker Login完了"
+        
+    - name: Docker Build and Push
+      run: |
+        echo "=== Docker Build and Push ==="
+        
+        HARBOR_URL=$(cat /tmp/harbor_url)
         HARBOR_PROJECT=$(cat /tmp/harbor_project)
         
-        # プッシュされたイメージ確認
-        echo "Harbor APIでイメージ確認中..."
-        curl --cacert /tmp/harbor-ca.crt -H "Host: harbor.local" -u $HARBOR_USERNAME:$HARBOR_PASSWORD https://$HARBOR_URL/v2/$HARBOR_PROJECT/slack.rs/tags/list
+        # Docker build
+        docker build -t $HARBOR_URL/$HARBOR_PROJECT/slack.rs:latest .
+        docker build -t $HARBOR_URL/$HARBOR_PROJECT/slack.rs:${{ github.sha }} .
         
-        echo "✅ デプロイ完了"
+        # Docker push
+        docker push $HARBOR_URL/$HARBOR_PROJECT/slack.rs:latest
+        docker push $HARBOR_URL/$HARBOR_PROJECT/slack.rs:${{ github.sha }}
+        
+        echo "✅ Docker Build and Push完了"
+        
+    - name: 結果確認
+      run: |
+        echo "=== 結果確認 ==="
+        
+        HARBOR_USERNAME=$(cat /tmp/harbor_username)
+        HARBOR_PASSWORD=$(cat /tmp/harbor_password)  
+        HARBOR_URL=$(cat /tmp/harbor_url)
+        HARBOR_PROJECT=$(cat /tmp/harbor_project)
+        
+        # Harbor APIでイメージ確認
+        curl -u $HARBOR_USERNAME:$HARBOR_PASSWORD https://$HARBOR_URL/v2/$HARBOR_PROJECT/slack.rs/tags/list
+        
+        echo "✅ プッシュ完了"
         
     - name: クリーンアップ
       if: always()
       run: |
-        echo "=== クリーンアップ ==="
-        
-        # 認証情報ファイルを安全に削除
-        rm -f /tmp/harbor_* /tmp/kubeconfig /tmp/harbor-ca.crt /tmp/daemon.json
-        
-        echo "✅ クリーンアップ完了"
+        rm -f /tmp/harbor_* /tmp/kubeconfig /tmp/harbor-ca.crt
