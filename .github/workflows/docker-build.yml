@@ -73,9 +73,8 @@ jobs:
         # /etc/hostsにharbor.localを追加
         echo "$HARBOR_URL harbor.local" | sudo tee -a /etc/hosts
         
-        # Docker daemon再起動して証明書を有効化
-        sudo systemctl restart docker
-        sleep 5
+        # Docker daemon再起動はコンテナ内では実行不可のためスキップ
+        echo "注意: Docker daemonはホスト上で動作中のため、証明書設定は即座に反映されます"
         
         echo "✅ Harbor証明書セットアップ完了"
         
