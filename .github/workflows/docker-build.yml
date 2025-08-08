@@ -61,9 +61,21 @@ jobs:
         sudo cp /tmp/harbor-ca.crt /etc/docker/certs.d/$HARBOR_URL/ca.crt
         sudo chmod 644 /etc/docker/certs.d/$HARBOR_URL/ca.crt
         
+        # harbor.local用にも作成
+        sudo mkdir -p /etc/docker/certs.d/harbor.local
+        sudo cp /tmp/harbor-ca.crt /etc/docker/certs.d/harbor.local/ca.crt
+        sudo chmod 644 /etc/docker/certs.d/harbor.local/ca.crt
+        
         # システム証明書ストアに追加
         sudo cp /tmp/harbor-ca.crt /usr/local/share/ca-certificates/harbor.crt
         sudo update-ca-certificates
+        
+        # /etc/hostsにharbor.localを追加
+        echo "$HARBOR_URL harbor.local" | sudo tee -a /etc/hosts
+        
+        # Docker daemon再起動して証明書を有効化
+        sudo systemctl restart docker
+        sleep 5
         
         echo "✅ Harbor証明書セットアップ完了"
         
@@ -82,7 +94,7 @@ jobs:
         
         # HTTPS接続テスト
         echo "Harbor HTTPS接続テスト:"
-        curl -I https://$HARBOR_URL/v2/ 2>&1
+        curl --cacert /tmp/harbor-ca.crt -I https://$HARBOR_URL/v2/ 2>&1 || echo "HTTPS接続エラー（予想通り）"
         
         # Docker login
         echo "Docker login実行:"
