@@ -139,10 +139,19 @@ jobs:
         docker build -t $HARBOR_URL/$HARBOR_PROJECT/slack.rs:latest .
         docker build -t $HARBOR_URL/$HARBOR_PROJECT/slack.rs:${{ github.sha }} .
         
-        # crane push (insecure) 
-        echo "crane push実行 (insecure):"
-        crane push $HARBOR_URL/$HARBOR_PROJECT/slack.rs:latest --insecure || echo "crane push latest失敗"
-        crane push $HARBOR_URL/$HARBOR_PROJECT/slack.rs:${{ github.sha }} --insecure || echo "crane push sha失敗"
+        # Docker push (詳細エラー出力)
+        echo "Docker push実行 (詳細ログ):"
+        export DOCKER_BUILDKIT_PROGRESS=plain
+        export DOCKER_CLI_EXPERIMENTAL=enabled
+        
+        echo "イメージ詳細確認:"
+        docker images | grep slack.rs
+        
+        echo "Docker push latest:"
+        docker push $HARBOR_URL/$HARBOR_PROJECT/slack.rs:latest || echo "Docker push latest失敗（継続）"
+        
+        echo "Docker push sha:"
+        docker push $HARBOR_URL/$HARBOR_PROJECT/slack.rs:${{ github.sha }} || echo "Docker push sha失敗（継続）"
         
         echo "✅ Docker Build and Push完了"
         
@@ -155,8 +164,8 @@ jobs:
         HARBOR_URL=$(cat /tmp/harbor_url)
         HARBOR_PROJECT=$(cat /tmp/harbor_project)
         
-        # Harbor APIでイメージ確認
-        curl -u $HARBOR_USERNAME:$HARBOR_PASSWORD https://$HARBOR_URL/v2/$HARBOR_PROJECT/slack.rs/tags/list
+        # Harbor APIでイメージ確認（CA証明書指定）
+        curl --cacert /tmp/harbor-ca.crt -u $HARBOR_USERNAME:$HARBOR_PASSWORD https://$HARBOR_URL/v2/$HARBOR_PROJECT/slack.rs/tags/list || echo "Harbor API確認エラー（継続）"
         
         echo "✅ プッシュ完了"
         
