@@ -1,7 +1,7 @@
-# GitHub Actions workflow for slack.rs with Harbor HTTPS - Fixed Version
-# CA証明書取得とHost header問題を修正
+# GitHub Actions workflow for slack.rs with Harbor HTTPS - Optimized Version
+# ServiceAccount権限問題を解決し、証明書アクセスを最適化
 
-name: slack.rs Harbor HTTPS Fixed v4
+name: slack.rs Harbor HTTPS Optimized v5
 
 on:
   workflow_dispatch:  # Manual trigger
@@ -77,15 +77,27 @@ jobs:
         echo "Password length: ${#HARBOR_PASSWORD}"
         echo "URL: $HARBOR_URL"
         
-        # Harbor CA証明書をKubernetesから取得（正しいnamespace）
+        # Harbor CA証明書をKubernetesから取得（arc-systems namespaceから）
         echo "Harbor CA証明書をKubernetesから取得中..."
-        kubectl get secret harbor-tls-secret -n harbor -o jsonpath='{.data.ca\.crt}' | base64 -d > /tmp/harbor-ca.crt
+        if kubectl get secret harbor-tls-secret -n arc-systems >/dev/null 2>&1; then
+          echo "✅ arc-systems namespaceからCA証明書取得"
+          kubectl get secret harbor-tls-secret -n arc-systems -o jsonpath='{.data.ca\.crt}' | base64 -d > /tmp/harbor-ca.crt
+        else
+          echo "⚠️ arc-systems namespaceにCA証明書なし、harbor namespaceから取得中..."
+          kubectl get secret harbor-tls-secret -n harbor -o jsonpath='{.data.ca\.crt}' | base64 -d > /tmp/harbor-ca.crt
+        fi
         
         # CA証明書の内容を確認
         echo "CA証明書内容確認:"
-        head -3 /tmp/harbor-ca.crt
-        echo "..."
-        tail -3 /tmp/harbor-ca.crt
+        if [ -s /tmp/harbor-ca.crt ]; then
+          echo "✅ CA証明書取得成功 ($(wc -c < /tmp/harbor-ca.crt) bytes)"
+          head -3 /tmp/harbor-ca.crt
+          echo "..."
+          tail -3 /tmp/harbor-ca.crt
+        else
+          echo "❌ CA証明書が空または取得失敗"
+          exit 1
+        fi
         
         # Docker証明書ディレクトリを作成してCA証明書をコピー
         sudo mkdir -p /etc/docker/certs.d/$HARBOR_URL
@@ -100,7 +112,7 @@ jobs:
         
         # Harbor CA証明書が配布されているか確認
         echo "Harbor CA証明書配布状況確認中..."
-        if [ -f "/etc/docker/certs.d/$HARBOR_URL/ca.crt" ]; then
+        if [ -f "/etc/docker/certs.d/$HARBOR_URL/ca.crt" ] && [ -s "/etc/docker/certs.d/$HARBOR_URL/ca.crt" ]; then
           echo "✅ Harbor CA証明書が配布されています"
           echo "証明書詳細:"
           openssl x509 -in /etc/docker/certs.d/$HARBOR_URL/ca.crt -subject -noout
