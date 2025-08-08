@@ -91,6 +91,20 @@ jobs:
         echo "{\"auths\":{\"$HARBOR_URL\":{\"auth\":\"$(echo -n \"$HARBOR_USERNAME:$HARBOR_PASSWORD\" | base64 -w 0)\"}},\"credHelpers\":{}}" > ~/.docker/config.json
         chmod 600 ~/.docker/config.json
         
+        # 詳細デバッグ情報収集
+        echo "=== デバッグ情報収集 ==="
+        echo "Harbor URL: $HARBOR_URL"
+        nslookup $HARBOR_URL || echo "DNS解決失敗"
+        
+        echo "実際のサーバー証明書詳細："
+        echo | openssl s_client -connect $HARBOR_URL:443 -servername harbor.local 2>/dev/null | openssl x509 -text -noout | grep -A5 "Subject Alternative Name"
+        
+        echo "Docker設定確認："
+        ls -la /etc/docker/certs.d/$HARBOR_URL/ || echo "Docker証明書ディレクトリなし"
+        
+        echo "システム証明書確認："
+        ls -la /usr/local/share/ca-certificates/ | grep harbor || echo "システム証明書なし"
+        
         # HTTPS接続テスト
         echo "Harbor HTTPS接続テスト:"
         curl --cacert /tmp/harbor-ca.crt -I https://$HARBOR_URL/v2/ 2>&1 || echo "HTTPS接続エラー（予想通り）"
