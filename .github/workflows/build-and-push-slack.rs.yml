@@ -221,9 +221,26 @@ jobs:
         sudo cp /tmp/k8s-ca-push.crt /usr/local/share/ca-certificates/k8s-ca-push.crt
         sudo update-ca-certificates
         
-        # Docker用CA証明書再設定
+        # Docker用CA証明書再設定（複数形式）
         sudo mkdir -p /etc/docker/certs.d/harbor.local
         sudo cp /tmp/k8s-ca-push.crt /etc/docker/certs.d/harbor.local/ca.crt
+        
+        # Docker用のclient証明書ディレクトリ設定
+        sudo mkdir -p /etc/docker/certs.d/192.168.122.100
+        sudo cp /tmp/k8s-ca-push.crt /etc/docker/certs.d/192.168.122.100/ca.crt
+        
+        # Docker daemon設定ファイル作成（registry-mirrors対応）
+        sudo tee /etc/docker/daemon.json << EOF
+{
+  "registry-mirrors": [],
+  "insecure-registries": []
+}
+EOF
+        
+        # Docker設定確認
+        echo "=== Docker設定確認 ==="
+        ls -la /etc/docker/certs.d/ || echo "Docker certs.d確認失敗"
+        sudo cat /etc/docker/daemon.json || echo "Docker daemon.json確認失敗"
         
         # hosts設定確認
         grep -q "harbor.local" /etc/hosts || echo "192.168.122.100 harbor.local" | sudo tee -a /etc/hosts
@@ -240,11 +257,24 @@ jobs:
         echo "=== Harbor接続前テスト ==="
         curl --cacert /tmp/k8s-ca-push.crt -s -I https://harbor.local/api/v2.0/health | head -3 || echo "Harbor接続前テスト失敗"
         
+        # Docker login実行（環境変数設定付き）
+        echo "=== Docker環境変数設定 ==="
+        export DOCKER_CERT_PATH=""
+        export DOCKER_TLS_VERIFY="1"  # TLS検証有効
+        export DOCKER_HOST=""
+        
         # Docker login実行
         if echo "$HARBOR_PASSWORD" | docker login https://harbor.local -u "$HARBOR_USERNAME" --password-stdin; then
           echo "✅ Harbor Push用 Docker login成功"
         else
           echo "❌ Harbor Push用 Docker login失敗"
+          
+          # 代替方法: docker loginをIP直接で試行
+          echo "=== 代替方法: IP直接接続 ==="
+          if echo "$HARBOR_PASSWORD" | docker login https://192.168.122.100 -u "$HARBOR_USERNAME" --password-stdin; then
+            echo "✅ IP直接 Docker login成功"
+          else
+            echo "❌ IP直接 Docker login失敗"
           
           # 最後の診断情報
           echo "=== 最終診断情報 ==="
