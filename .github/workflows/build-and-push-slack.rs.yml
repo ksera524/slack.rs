@@ -101,7 +101,17 @@ jobs:
         
         # システムCA信頼ストアに追加
         sudo cp /tmp/k8s-ca.crt /etc/ssl/certs/k8s-ca.crt
+        
+        # CA証明書を/usr/local/share/ca-certificates/にも追加（Debian/Ubuntu標準）
+        sudo mkdir -p /usr/local/share/ca-certificates
+        sudo cp /tmp/k8s-ca.crt /usr/local/share/ca-certificates/k8s-ca.crt
+        
+        # CA証明書更新
         sudo update-ca-certificates
+        
+        # CA証明書追加の確認
+        echo "=== CA証明書追加確認 ==="
+        sudo update-ca-certificates --verbose 2>&1 | grep k8s-ca || echo "CA証明書追加確認失敗"
         
         # initContainerで準備されたhosts情報を使用
         if [[ -f /shared/hosts-harbor ]]; then
@@ -144,9 +154,34 @@ jobs:
         echo "=== Harbor接続テスト ==="
         curl -v --connect-timeout 10 https://harbor.local/api/v2.0/health 2>&1 | head -20 || echo "Harbor接続テスト失敗"
         
+        # CA証明書指定での接続テスト
+        echo "=== CA証明書指定接続テスト ==="
+        curl --cacert /tmp/k8s-ca.crt -s https://harbor.local/api/v2.0/health | head -3 || echo "CA証明書指定接続失敗"
+        
+        # システムCA証明書での接続テスト
+        echo "=== システムCA証明書接続テスト ==="  
+        curl -s https://harbor.local/api/v2.0/health | head -3 || echo "システムCA証明書接続失敗"
+        
         # Docker login実行（HTTPS接続・harbor.local経由）
         echo "Docker login実行中（HTTPS接続・harbor.local経由）..."
-        echo "$HARBOR_PASSWORD" | docker login https://harbor.local -u "$HARBOR_USERNAME" --password-stdin
+        
+        # Docker clientでの証明書検証状況確認
+        echo "=== Docker証明書設定確認 ==="
+        ls -la /etc/docker/certs.d/harbor.local/ || echo "Docker証明書ディレクトリなし"
+        
+        # Docker loginを試行
+        if echo "$HARBOR_PASSWORD" | docker login https://harbor.local -u "$HARBOR_USERNAME" --password-stdin; then
+          echo "✅ Docker login成功"
+        else
+          echo "❌ Docker login失敗 - CA証明書問題の可能性"
+          echo "=== 追加のCA証明書検証 ==="
+          
+          # CA証明書の内容確認
+          openssl x509 -in /tmp/k8s-ca.crt -text -noout | grep -E "(Subject|Issuer)" || echo "CA証明書解析失敗"
+          
+          # Harbor証明書の確認
+          echo | openssl s_client -connect harbor.local:443 -servername harbor.local 2>/dev/null | openssl x509 -noout -issuer || echo "Harbor証明書確認失敗"
+        fi
         
         # 認証確認
         echo "Docker認証状況確認:"
