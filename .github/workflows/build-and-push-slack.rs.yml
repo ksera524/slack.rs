@@ -58,33 +58,34 @@ jobs:
         chmod 600 /tmp/harbor_*
         echo "✅ Harbor認証情報取得完了"
         
-    - name: Docker認証設定（CA証明書HTTPS）
+    - name: Docker認証設定
       run: |
-        echo "=== Docker認証設定（CA証明書ベースHTTPS） ==="
+        echo "=== Docker認証設定 ==="
         
         HARBOR_USERNAME=$(cat /tmp/harbor_username)
         HARBOR_PASSWORD=$(cat /tmp/harbor_password)
         HARBOR_URL=$(cat /tmp/harbor_url)
         
-        # CA証明書確認
-        echo "Harbor CA証明書確認中..."
-        if [ -f "/etc/docker/certs.d/$HARBOR_URL/ca.crt" ]; then
-            echo "✓ Harbor CA証明書が設定済みです"
-            openssl x509 -in "/etc/docker/certs.d/$HARBOR_URL/ca.crt" -text -noout | grep -A 2 "Subject Alternative Name" || echo "CA証明書のため、SAN情報はありません"
-        else
-            echo "⚠️ Harbor CA証明書が見つかりません"
-        fi
+        # CA証明書信頼設定
+        echo "CA証明書信頼設定中..."
         
-        # システムCA証明書確認
-        if [ -f "/usr/local/share/ca-certificates/harbor-ca.crt" ]; then
-            echo "✓ システムCA証明書が設定済みです"
-        else
-            echo "⚠️ システムCA証明書が見つかりません"
-        fi
+        # CA証明書をkubectl経由で取得
+        kubectl get secret ca-key-pair -n cert-manager -o jsonpath='{.data.tls\.crt}' | base64 -d > /tmp/k8s-ca.crt
         
-        # Harbor TLS証明書の詳細確認（新しいIP SAN付き証明書）
-        echo "Harbor TLS証明書確認（IP SAN検証）..."
-        echo | openssl s_client -connect $HARBOR_URL:443 -servername $HARBOR_URL 2>/dev/null | openssl x509 -text -noout | grep -A 5 "Subject Alternative Name" || echo "TLS証明書確認失敗"
+        # システムCA信頼ストアに追加
+        sudo cp /tmp/k8s-ca.crt /etc/ssl/certs/k8s-ca.crt
+        sudo update-ca-certificates
+        
+        # Docker用CA証明書設定
+        sudo mkdir -p /etc/docker/certs.d/$HARBOR_URL
+        sudo cp /tmp/k8s-ca.crt /etc/docker/certs.d/$HARBOR_URL/ca.crt
+        
+        echo "✅ CA証明書信頼設定完了"
+        
+        # Docker daemon再起動（CA証明書反映のため）
+        echo "Docker daemon再起動中..."
+        sudo systemctl restart docker || echo "Docker再起動失敗（継続）"
+        sleep 5
         
         # Docker login実行（HTTPS接続）
         echo "Docker login実行中（HTTPS接続）..."
@@ -94,7 +95,7 @@ jobs:
         echo "Docker認証状況確認:"
         docker system info | grep -A5 -B5 "Registry" || echo "Registry情報なし"
         
-        echo "✅ Docker HTTPS認証設定完了"
+        echo "✅ Docker認証設定完了"
         
     - name: Docker Build
       run: |
@@ -109,16 +110,25 @@ jobs:
         
         echo "✅ Docker Build完了"
         
-    - name: Harbor Push（HTTPS）
+    - name: Harbor Push
       run: |
-        echo "=== Harbor Push（CA証明書ベースHTTPS） ==="
+        echo "=== Harbor Push ==="
         
         HARBOR_USERNAME=$(cat /tmp/harbor_username)
         HARBOR_PASSWORD=$(cat /tmp/harbor_password)
         HARBOR_URL=$(cat /tmp/harbor_url)
         HARBOR_PROJECT=$(cat /tmp/harbor_project)
         
-        # Docker login確認・再実行（HTTPS接続）
+        # CA証明書確認
+        echo "CA証明書確認中..."
+        if [[ ! -f /etc/docker/certs.d/$HARBOR_URL/ca.crt ]]; then
+          echo "⚠️ CA証明書が見つかりません。再設定中..."
+          kubectl get secret ca-key-pair -n cert-manager -o jsonpath='{.data.tls\.crt}' | base64 -d > /tmp/k8s-ca.crt
+          sudo mkdir -p /etc/docker/certs.d/$HARBOR_URL
+          sudo cp /tmp/k8s-ca.crt /etc/docker/certs.d/$HARBOR_URL/ca.crt
+        fi
+        
+        # Docker login再実行（push前確認・HTTPS接続）
         echo "Docker login確認・再実行（HTTPS接続）..."
         echo "$HARBOR_PASSWORD" | docker login https://$HARBOR_URL -u "$HARBOR_USERNAME" --password-stdin
         
@@ -126,39 +136,36 @@ jobs:
         echo "Docker push実行中..."
         
         # latest tagのpush
-        echo "Push対象: $HARBOR_URL/$HARBOR_PROJECT/slack.rs:latest"
-        if timeout 120 docker push $HARBOR_URL/$HARBOR_PROJECT/slack.rs:latest; then
+        echo "推す対象: $HARBOR_URL/$HARBOR_PROJECT/slack.rs:latest"
+        if timeout 60 docker push $HARBOR_URL/$HARBOR_PROJECT/slack.rs:latest; then
           echo "✅ latest push成功"
         else
           echo "⚠️ latest push失敗（継続）"
         fi
         
         # SHA tagのpush
-        echo "Push対象: $HARBOR_URL/$HARBOR_PROJECT/slack.rs:${{ github.sha }}"
-        if timeout 120 docker push $HARBOR_URL/$HARBOR_PROJECT/slack.rs:${{ github.sha }}; then
+        echo "推す対象: $HARBOR_URL/$HARBOR_PROJECT/slack.rs:${{ github.sha }}"
+        if timeout 60 docker push $HARBOR_URL/$HARBOR_PROJECT/slack.rs:${{ github.sha }}; then
           echo "✅ SHA push成功"
         else
           echo "⚠️ SHA push失敗（継続）"
         fi
         
-        echo "✅ Harbor HTTPS Push完了"
+        echo "✅ Harbor Push完了"
         
-    - name: プッシュ結果確認（HTTPS）
+    - name: プッシュ結果確認
       run: |
-        echo "=== プッシュ結果確認（CA証明書ベースHTTPS） ==="
+        echo "=== プッシュ結果確認 ==="
         
         HARBOR_USERNAME=$(cat /tmp/harbor_username)
         HARBOR_PASSWORD=$(cat /tmp/harbor_password)
         HARBOR_URL=$(cat /tmp/harbor_url)
         HARBOR_PROJECT=$(cat /tmp/harbor_project)
         
-        # プッシュされたイメージ確認（HTTPS APIアクセス）
-        echo "Harbor APIからイメージ一覧を確認中..."
-        curl --cacert /etc/docker/certs.d/$HARBOR_URL/ca.crt \
-             -u $HARBOR_USERNAME:$HARBOR_PASSWORD \
-             "https://$HARBOR_URL/v2/$HARBOR_PROJECT/slack.rs/tags/list" || echo "HTTPS APIアクセス失敗、HTTPにフォールバック"
+        # プッシュされたイメージ確認
+        curl -u $HARBOR_USERNAME:$HARBOR_PASSWORD "https://$HARBOR_URL/v2/$HARBOR_PROJECT/slack.rs/tags/list" || echo "イメージ一覧取得失敗"
         
-        echo "✅ HTTPS デプロイ完了"
+        echo "✅ デプロイ完了"
         
     - name: クリーンアップ
       if: always()
