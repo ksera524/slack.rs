@@ -76,7 +76,14 @@ jobs:
         sudo cp /tmp/k8s-ca.crt /etc/ssl/certs/k8s-ca.crt
         sudo update-ca-certificates
         
-        # Docker用CA証明書設定
+        # Harbor IPをharbor.localにマッピング (hostsファイル)
+        echo "192.168.122.100 harbor.local" | sudo tee -a /etc/hosts
+        
+        # Docker用CA証明書設定 (harbor.local名での接続用)
+        sudo mkdir -p /etc/docker/certs.d/harbor.local
+        sudo cp /tmp/k8s-ca.crt /etc/docker/certs.d/harbor.local/ca.crt
+        
+        # IP用も念の為設定
         sudo mkdir -p /etc/docker/certs.d/$HARBOR_URL
         sudo cp /tmp/k8s-ca.crt /etc/docker/certs.d/$HARBOR_URL/ca.crt
         
@@ -87,9 +94,9 @@ jobs:
         sudo systemctl restart docker || echo "Docker再起動失敗（継続）"
         sleep 5
         
-        # Docker login実行（HTTPS接続）
-        echo "Docker login実行中（HTTPS接続）..."
-        echo "$HARBOR_PASSWORD" | docker login https://$HARBOR_URL -u "$HARBOR_USERNAME" --password-stdin
+        # Docker login実行（HTTPS接続・harbor.local経由）
+        echo "Docker login実行中（HTTPS接続・harbor.local経由）..."
+        echo "$HARBOR_PASSWORD" | docker login https://harbor.local -u "$HARBOR_USERNAME" --password-stdin
         
         # 認証確認
         echo "Docker認証状況確認:"
@@ -104,9 +111,9 @@ jobs:
         HARBOR_URL=$(cat /tmp/harbor_url)
         HARBOR_PROJECT=$(cat /tmp/harbor_project)
         
-        # Dockerイメージビルド（HTTPS接続用）
-        docker build -t $HARBOR_URL/$HARBOR_PROJECT/slack.rs:latest .
-        docker build -t $HARBOR_URL/$HARBOR_PROJECT/slack.rs:${{ github.sha }} .
+        # Dockerイメージビルド（harbor.local使用）
+        docker build -t harbor.local/$HARBOR_PROJECT/slack.rs:latest .
+        docker build -t harbor.local/$HARBOR_PROJECT/slack.rs:${{ github.sha }} .
         
         echo "✅ Docker Build完了"
         
@@ -121,31 +128,33 @@ jobs:
         
         # CA証明書確認
         echo "CA証明書確認中..."
-        if [[ ! -f /etc/docker/certs.d/$HARBOR_URL/ca.crt ]]; then
+        if [[ ! -f /etc/docker/certs.d/harbor.local/ca.crt ]]; then
           echo "⚠️ CA証明書が見つかりません。再設定中..."
           kubectl get secret ca-key-pair -n cert-manager -o jsonpath='{.data.tls\.crt}' | base64 -d > /tmp/k8s-ca.crt
-          sudo mkdir -p /etc/docker/certs.d/$HARBOR_URL
-          sudo cp /tmp/k8s-ca.crt /etc/docker/certs.d/$HARBOR_URL/ca.crt
+          sudo mkdir -p /etc/docker/certs.d/harbor.local
+          sudo cp /tmp/k8s-ca.crt /etc/docker/certs.d/harbor.local/ca.crt
+          # hosts設定確認
+          grep -q "harbor.local" /etc/hosts || echo "192.168.122.100 harbor.local" | sudo tee -a /etc/hosts
         fi
         
-        # Docker login再実行（push前確認・HTTPS接続）
-        echo "Docker login確認・再実行（HTTPS接続）..."
-        echo "$HARBOR_PASSWORD" | docker login https://$HARBOR_URL -u "$HARBOR_USERNAME" --password-stdin
+        # Docker login再実行（push前確認・HTTPS接続・harbor.local）
+        echo "Docker login確認・再実行（HTTPS接続・harbor.local）..."
+        echo "$HARBOR_PASSWORD" | docker login https://harbor.local -u "$HARBOR_USERNAME" --password-stdin
         
         # Docker push実行
         echo "Docker push実行中..."
         
         # latest tagのpush
-        echo "推す対象: $HARBOR_URL/$HARBOR_PROJECT/slack.rs:latest"
-        if timeout 60 docker push $HARBOR_URL/$HARBOR_PROJECT/slack.rs:latest; then
+        echo "推す対象: harbor.local/$HARBOR_PROJECT/slack.rs:latest"
+        if timeout 60 docker push harbor.local/$HARBOR_PROJECT/slack.rs:latest; then
           echo "✅ latest push成功"
         else
           echo "⚠️ latest push失敗（継続）"
         fi
         
         # SHA tagのpush
-        echo "推す対象: $HARBOR_URL/$HARBOR_PROJECT/slack.rs:${{ github.sha }}"
-        if timeout 60 docker push $HARBOR_URL/$HARBOR_PROJECT/slack.rs:${{ github.sha }}; then
+        echo "推す対象: harbor.local/$HARBOR_PROJECT/slack.rs:${{ github.sha }}"
+        if timeout 60 docker push harbor.local/$HARBOR_PROJECT/slack.rs:${{ github.sha }}; then
           echo "✅ SHA push成功"
         else
           echo "⚠️ SHA push失敗（継続）"
@@ -163,7 +172,7 @@ jobs:
         HARBOR_PROJECT=$(cat /tmp/harbor_project)
         
         # プッシュされたイメージ確認
-        curl -u $HARBOR_USERNAME:$HARBOR_PASSWORD "https://$HARBOR_URL/v2/$HARBOR_PROJECT/slack.rs/tags/list" || echo "イメージ一覧取得失敗"
+        curl -u $HARBOR_USERNAME:$HARBOR_PASSWORD "https://harbor.local/v2/$HARBOR_PROJECT/slack.rs/tags/list" || echo "イメージ一覧取得失敗"
         
         echo "✅ デプロイ完了"
         
