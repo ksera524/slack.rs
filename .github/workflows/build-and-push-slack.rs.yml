@@ -232,12 +232,7 @@ jobs:
         sudo cp /tmp/k8s-ca-push.crt /etc/docker/certs.d/192.168.122.100/ca.crt
         
         # Docker daemon設定ファイル作成（registry-mirrors対応）
-        sudo tee /etc/docker/daemon.json << EOF
-{
-  "registry-mirrors": [],
-  "insecure-registries": []
-}
-EOF
+        echo '{"registry-mirrors": [], "insecure-registries": []}' | sudo tee /etc/docker/daemon.json
         
         # Docker設定確認
         echo "=== Docker設定確認 ==="
