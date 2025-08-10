@@ -211,20 +211,49 @@ jobs:
         HARBOR_URL=$(cat /tmp/harbor_url)
         HARBOR_PROJECT=$(cat /tmp/harbor_project)
         
-        # CA証明書確認
-        echo "CA証明書確認中..."
-        if [[ ! -f /etc/docker/certs.d/harbor.local/ca.crt ]]; then
-          echo "⚠️ CA証明書が見つかりません。再設定中..."
-          kubectl get secret ca-key-pair -n cert-manager -o jsonpath='{.data.tls\.crt}' | base64 -d > /tmp/k8s-ca.crt
-          sudo mkdir -p /etc/docker/certs.d/harbor.local
-          sudo cp /tmp/k8s-ca.crt /etc/docker/certs.d/harbor.local/ca.crt
-          # hosts設定確認
-          grep -q "harbor.local" /etc/hosts || echo "192.168.122.100 harbor.local" | sudo tee -a /etc/hosts
-        fi
+        # 完全なCA証明書再設定
+        echo "=== Harbor Push用CA証明書再設定 ==="
+        
+        # CA証明書を再取得
+        kubectl get secret ca-key-pair -n cert-manager -o jsonpath='{.data.tls\.crt}' | base64 -d > /tmp/k8s-ca-push.crt
+        
+        # システムCA信頼ストアに再追加
+        sudo cp /tmp/k8s-ca-push.crt /usr/local/share/ca-certificates/k8s-ca-push.crt
+        sudo update-ca-certificates
+        
+        # Docker用CA証明書再設定
+        sudo mkdir -p /etc/docker/certs.d/harbor.local
+        sudo cp /tmp/k8s-ca-push.crt /etc/docker/certs.d/harbor.local/ca.crt
+        
+        # hosts設定確認
+        grep -q "harbor.local" /etc/hosts || echo "192.168.122.100 harbor.local" | sudo tee -a /etc/hosts
+        
+        # CA証明書内容確認
+        echo "=== CA証明書再設定確認 ==="
+        ls -la /etc/docker/certs.d/harbor.local/ca.crt
+        openssl x509 -in /tmp/k8s-ca-push.crt -noout -subject || echo "CA証明書解析失敗"
         
         # Docker login再実行（push前確認・HTTPS接続・harbor.local）
         echo "Docker login確認・再実行（HTTPS接続・harbor.local）..."
-        echo "$HARBOR_PASSWORD" | docker login https://harbor.local -u "$HARBOR_USERNAME" --password-stdin
+        
+        # Harbor接続前テスト
+        echo "=== Harbor接続前テスト ==="
+        curl --cacert /tmp/k8s-ca-push.crt -s -I https://harbor.local/api/v2.0/health | head -3 || echo "Harbor接続前テスト失敗"
+        
+        # Docker login実行
+        if echo "$HARBOR_PASSWORD" | docker login https://harbor.local -u "$HARBOR_USERNAME" --password-stdin; then
+          echo "✅ Harbor Push用 Docker login成功"
+        else
+          echo "❌ Harbor Push用 Docker login失敗"
+          
+          # 最後の診断情報
+          echo "=== 最終診断情報 ==="
+          curl -k -s -I https://harbor.local/api/v2.0/health | head -2 || echo "insecure接続テスト失敗"
+          
+          # 続行を試行
+          echo "⚠️ Docker login失敗のため、push処理をスキップします"
+          exit 1
+        fi
         
         # Docker push実行
         echo "Docker push実行中..."
