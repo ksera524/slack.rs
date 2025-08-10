@@ -272,14 +272,15 @@ jobs:
             echo "✅ IP直接 Docker login成功"
           else
             echo "❌ IP直接 Docker login失敗"
-          
-          # 最後の診断情報
-          echo "=== 最終診断情報 ==="
-          curl -k -s -I https://harbor.local/api/v2.0/health | head -2 || echo "insecure接続テスト失敗"
-          
-          # 続行を試行
-          echo "⚠️ Docker login失敗のため、push処理をスキップします"
-          exit 1
+            
+            # 最後の診断情報
+            echo "=== 最終診断情報 ==="
+            curl -k -s -I https://harbor.local/api/v2.0/health | head -2 || echo "insecure接続テスト失敗"
+            
+            # 続行を試行
+            echo "⚠️ Docker login失敗のため、push処理をスキップします"
+            exit 1
+          fi
         fi
         
         # Docker push実行
