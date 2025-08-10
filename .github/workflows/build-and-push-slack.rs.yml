@@ -81,7 +81,22 @@ jobs:
           cp /shared/k8s-ca.crt /tmp/k8s-ca.crt
         else
           echo "kubectl経由でCA証明書を取得"
-          kubectl get secret ca-key-pair -n cert-manager -o jsonpath='{.data.tls\.crt}' | base64 -d > /tmp/k8s-ca.crt
+          if kubectl get secret ca-key-pair -n cert-manager -o jsonpath='{.data.tls\.crt}' | base64 -d > /tmp/k8s-ca.crt; then
+            echo "✅ CA証明書取得成功"
+          else
+            echo "❌ CA証明書取得失敗、空ファイル作成"
+            touch /tmp/k8s-ca.crt
+          fi
+        fi
+        
+        # CA証明書内容確認
+        echo "=== CA証明書内容確認 ==="
+        ls -la /tmp/k8s-ca.crt
+        if [[ -s /tmp/k8s-ca.crt ]]; then
+          echo "✅ CA証明書ファイルに内容あり"
+          head -3 /tmp/k8s-ca.crt
+        else
+          echo "❌ CA証明書ファイルが空です"
         fi
         
         # システムCA信頼ストアに追加
@@ -121,10 +136,9 @@ jobs:
         
         echo "✅ CA証明書信頼設定完了"
         
-        # Docker daemon再起動（CA証明書反映のため）
-        echo "Docker daemon再起動中..."
-        sudo systemctl restart docker || echo "Docker再起動失敗（継続）"
-        sleep 5
+        # Docker daemon設定確認（コンテナ環境では再起動不要）
+        echo "Docker daemon設定確認中..."
+        docker info | head -10 || echo "Docker情報取得失敗"
         
         # Harbor接続テスト
         echo "=== Harbor接続テスト ==="
