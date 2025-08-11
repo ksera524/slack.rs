@@ -318,10 +318,10 @@ jobs:
         sudo mkdir -p /etc/docker/certs.d/192.168.122.100:443
         sudo cp /tmp/k8s-ca-push.crt /etc/docker/certs.d/192.168.122.100:443/ca.crt
         
-        # Docker daemon設定ファイル作成（CA証明書パスを明示）
+        # Docker daemon設定ファイル作成（insecure registry設定）
         echo '{
           "registry-mirrors": [],
-          "insecure-registries": [],
+          "insecure-registries": ["harbor.local", "192.168.122.100", "harbor.local:443", "192.168.122.100:443"],
           "log-driver": "json-file",
           "log-opts": {
             "max-size": "10m",
@@ -376,10 +376,11 @@ jobs:
         # HTTPS接続を強制するためのDocker daemon設定
         echo "Docker daemonにCA証明書を強制認識させる設定..."
         
-        # Docker daemon.jsonでCA証明書パスを明示
+        # Docker daemon.jsonでinsecure registryを強制設定
+        # curlは正常に接続できているが、Docker clientはCA証明書を認識しないため
         echo '{
           "registry-mirrors": [],
-          "insecure-registries": [],
+          "insecure-registries": ["harbor.local", "192.168.122.100", "harbor.local:443", "192.168.122.100:443"],
           "log-driver": "json-file",
           "log-opts": {
             "max-size": "10m",
