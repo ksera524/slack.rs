@@ -112,15 +112,25 @@ jobs:
           echo "❌ CA証明書ファイルが空です"
         fi
         
-        # システムCA信頼ストアに追加
-        sudo cp /tmp/k8s-ca.crt /etc/ssl/certs/k8s-ca.crt
-        
-        # CA証明書を/usr/local/share/ca-certificates/にも追加（Debian/Ubuntu標準）
+        # システムCA信頼ストアに正しく追加（Debian/Ubuntu標準方式）
         sudo mkdir -p /usr/local/share/ca-certificates
-        sudo cp /tmp/k8s-ca.crt /usr/local/share/ca-certificates/k8s-ca.crt
+        sudo cp /tmp/k8s-ca.crt /usr/local/share/ca-certificates/harbor-ca.crt
         
-        # CA証明書更新
+        # CA証明書更新とシステム反映
         sudo update-ca-certificates
+        
+        # CA証明書がシステムに追加されたことを確認
+        echo "=== システムCA証明書追加確認 ==="
+        if [ -f /etc/ssl/certs/harbor-ca.pem ]; then
+          echo "✅ CA証明書がシステムに正常追加: harbor-ca.pem"
+        elif grep -q "harbor-ca" /etc/ssl/certs/ca-certificates.crt 2>/dev/null; then
+          echo "✅ CA証明書がca-certificates.crtに統合"
+        else
+          echo "❌ CA証明書のシステム追加要確認"
+        fi
+        
+        # システム全体でのCA証明書確認
+        openssl verify -CAfile /etc/ssl/certs/ca-certificates.crt /tmp/k8s-ca.crt 2>/dev/null && echo "✅ CA証明書検証OK" || echo "⚠️ CA証明書検証結果要確認"
         
         # CA証明書追加の確認
         echo "=== CA証明書追加確認 ==="
@@ -279,9 +289,17 @@ jobs:
           fi
         fi
         
-        # システムCA信頼ストアに再追加
-        sudo cp /tmp/k8s-ca-push.crt /usr/local/share/ca-certificates/k8s-ca-push.crt
+        # システムCA信頼ストアに再追加（正しい方式）
+        sudo cp /tmp/k8s-ca-push.crt /usr/local/share/ca-certificates/harbor-ca-push.crt
         sudo update-ca-certificates
+        
+        # システムCA証明書確認
+        echo "=== Push用システムCA証明書確認 ==="
+        if [ -f /etc/ssl/certs/harbor-ca-push.pem ] || grep -q "harbor-ca-push" /etc/ssl/certs/ca-certificates.crt 2>/dev/null; then
+          echo "✅ Push用CA証明書がシステムに正常追加"
+        else
+          echo "❌ Push用CA証明書のシステム追加要確認"
+        fi
         
         # Docker用CA証明書再設定（完全な形式対応）
         # 1. harbor.local用
@@ -419,8 +437,16 @@ jobs:
         echo "=== CA証明書確認 ==="
         openssl x509 -in /tmp/k8s-ca-push.crt -noout -subject || echo "CA証明書確認失敗"
         
-        # Docker loginをHTTPS接続で実行
-        if echo "$HARBOR_PASSWORD" | docker login harbor.local -u "$HARBOR_USERNAME" --password-stdin; then
+        # Docker clientに強制的にシステムCA証明書を使用させる
+        export SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt
+        export SSL_CERT_DIR=/etc/ssl/certs
+        
+        # Docker loginをHTTPS接続で実行（システムCA証明書使用）
+        echo "環境変数設定:"
+        echo "SSL_CERT_FILE: $SSL_CERT_FILE"
+        echo "SSL_CERT_DIR: $SSL_CERT_DIR"
+        
+        if echo "$HARBOR_PASSWORD" | SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt docker login harbor.local -u "$HARBOR_USERNAME" --password-stdin; then
           echo "✅ HTTPS Docker login成功"
           LOGIN_SUCCESS=true
           PUSH_TARGET="harbor.local"
@@ -458,17 +484,17 @@ jobs:
         # Push先の決定（既に上記で設定済み）
         echo "Push先: $PUSH_TARGET"
         
-        # latest tagのpush
+        # latest tagのpush（システムCA証明書使用）
         echo "推す対象: $PUSH_TARGET/$HARBOR_PROJECT/slack.rs:latest"
-        if timeout 60 docker push $PUSH_TARGET/$HARBOR_PROJECT/slack.rs:latest; then
+        if timeout 60 SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt docker push $PUSH_TARGET/$HARBOR_PROJECT/slack.rs:latest; then
           echo "✅ latest push成功"
         else
           echo "⚠️ latest push失敗（継続）"
         fi
         
-        # SHA tagのpush  
+        # SHA tagのpush（システムCA証明書使用）
         echo "推す対象: $PUSH_TARGET/$HARBOR_PROJECT/slack.rs:${{ github.sha }}"
-        if timeout 60 docker push $PUSH_TARGET/$HARBOR_PROJECT/slack.rs:${{ github.sha }}; then
+        if timeout 60 SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt docker push $PUSH_TARGET/$HARBOR_PROJECT/slack.rs:${{ github.sha }}; then
           echo "✅ SHA push成功"
         else
           echo "⚠️ SHA push失敗（継続）"
