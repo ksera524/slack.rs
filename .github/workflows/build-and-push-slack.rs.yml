@@ -225,14 +225,15 @@ jobs:
         docker build -t 192.168.122.100/$HARBOR_PROJECT/slack.rs:latest .
         docker build -t 192.168.122.100/$HARBOR_PROJECT/slack.rs:${{ github.sha }} .
         
-        # HTTP接続用タグも追加
-        if curl -s -m 5 http://harbor.local/api/v2.0/health >/dev/null 2>&1; then
-          echo "HTTP接続用タグも作成"
-          # HTTPアクセス時はポート番号なしでOK
-        elif curl -s -m 5 http://192.168.122.100:8080/api/v2.0/health >/dev/null 2>&1; then
-          docker build -t 192.168.122.100:8080/$HARBOR_PROJECT/slack.rs:latest .
-          docker build -t 192.168.122.100:8080/$HARBOR_PROJECT/slack.rs:${{ github.sha }} .
-        fi
+        # HTTP接続用タグも作成（後でpushで使用される可能性がある）
+        echo "追加のHTTP接続用タグを作成中..."
+        
+        # harbor.local:80用タグ（HTTPの場合）
+        # （ポート80はデフォルトなので表記不要）
+        
+        # 192.168.122.100:8080用タグ（HTTP用）
+        docker build -t 192.168.122.100:8080/$HARBOR_PROJECT/slack.rs:latest .
+        docker build -t 192.168.122.100:8080/$HARBOR_PROJECT/slack.rs:${{ github.sha }} .
         
         echo "✅ Docker Build完了"
         
@@ -330,16 +331,31 @@ jobs:
         # Harbor HTTP Ingressを使用（HTTPSをHTTPに変更）
         echo "Harbor HTTP接続テスト中..."
         
-        # Harbor HTTP接続確認（Harbor HTTP Ingressが存在する場合）
-        if curl -s -m 5 http://harbor.local/api/v2.0/health >/dev/null 2>&1; then
-          echo "✅ Harbor HTTP接続が利用可能"
+        # Harbor HTTP接続確認と詳細ログ
+        echo "Harbor HTTP接続テスト: http://harbor.local/api/v2.0/health"
+        if curl -s -m 10 http://harbor.local/api/v2.0/health; then
+          echo ""
+          echo "✅ Harbor HTTP接続が利用可能 (harbor.local)"
           HARBOR_HTTP_URL="harbor.local"
-        elif curl -s -m 5 http://192.168.122.100:8080/api/v2.0/health >/dev/null 2>&1; then
-          echo "✅ Harbor HTTP (port 8080)接続が利用可能"
-          HARBOR_HTTP_URL="192.168.122.100:8080"
         else
-          echo "HTTP接続も失敗、insecure HTTPS接続を強制"
-          HARBOR_HTTP_URL=""
+          echo "Harbor HTTP接続テスト: http://192.168.122.100:8080/api/v2.0/health"
+          if curl -s -m 10 http://192.168.122.100:8080/api/v2.0/health; then
+            echo ""
+            echo "✅ Harbor HTTP (port 8080)接続が利用可能"
+            HARBOR_HTTP_URL="192.168.122.100:8080"
+          else
+            echo ""
+            echo "Harbor HTTP接続テスト: http://192.168.122.100/api/v2.0/health"
+            if curl -s -m 10 http://192.168.122.100/api/v2.0/health; then
+              echo ""
+              echo "✅ Harbor HTTP (port 80)接続が利用可能"
+              HARBOR_HTTP_URL="192.168.122.100"
+            else
+              echo ""
+              echo "❌ HTTP接続全て失敗、HTTPS insecure接続を試行"
+              HARBOR_HTTP_URL=""
+            fi
+          fi
         fi
         
         LOGIN_SUCCESS=false
@@ -347,10 +363,12 @@ jobs:
         # HTTP接続試行
         if [[ -n "$HARBOR_HTTP_URL" ]]; then
           echo "=== HTTP Docker login試行: $HARBOR_HTTP_URL ==="
-          if echo "$HARBOR_PASSWORD" | docker login "$HARBOR_HTTP_URL" -u "$HARBOR_USERNAME" --password-stdin 2>/dev/null; then
+          if echo "$HARBOR_PASSWORD" | docker login "$HARBOR_HTTP_URL" -u "$HARBOR_USERNAME" --password-stdin; then
             echo "✅ Docker login成功 (HTTP接続)"
             LOGIN_SUCCESS=true
             PUSH_TARGET="$HARBOR_HTTP_URL"
+          else
+            echo "❌ HTTP Docker login失敗"
           fi
         fi
         
