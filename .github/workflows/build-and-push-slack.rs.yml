@@ -390,12 +390,18 @@ jobs:
         # HTTP接続試行
         if [[ -n "$HARBOR_HTTP_URL" ]]; then
           echo "=== HTTP Docker login試行: $HARBOR_HTTP_URL ==="
-          if echo "$HARBOR_PASSWORD" | docker login "$HARBOR_HTTP_URL" -u "$HARBOR_USERNAME" --password-stdin; then
+          
+          # HTTPスキーマを明示的に指定
+          HTTP_LOGIN_URL="http://$HARBOR_HTTP_URL"
+          echo "HTTP接続URL: $HTTP_LOGIN_URL"
+          
+          if echo "$HARBOR_PASSWORD" | docker login "$HTTP_LOGIN_URL" -u "$HARBOR_USERNAME" --password-stdin; then
             echo "✅ Docker login成功 (HTTP接続)"
             LOGIN_SUCCESS=true
             PUSH_TARGET="$HARBOR_HTTP_URL"
           else
-            echo "❌ HTTP Docker login失敗"
+            echo "❌ HTTP Docker login失敗、詳細確認："
+            echo "$HARBOR_PASSWORD" | docker login "$HTTP_LOGIN_URL" -u "$HARBOR_USERNAME" --password-stdin || true
           fi
         fi
         
@@ -421,13 +427,25 @@ jobs:
           # Base64エンコード認証情報作成
           AUTH_STRING=$(echo -n "$HARBOR_USERNAME:$HARBOR_PASSWORD" | base64 -w 0)
           
-          # Docker config.jsonを直接作成
+          # Docker config.jsonを直接作成（HTTP/HTTPS両対応）
           echo "{
             \"auths\": {
               \"harbor.local\": {
                 \"auth\": \"$AUTH_STRING\"
               },
+              \"http://harbor.local\": {
+                \"auth\": \"$AUTH_STRING\"
+              },
               \"192.168.122.100\": {
+                \"auth\": \"$AUTH_STRING\"
+              },
+              \"192.168.122.100:8080\": {
+                \"auth\": \"$AUTH_STRING\"
+              },
+              \"http://192.168.122.100\": {
+                \"auth\": \"$AUTH_STRING\"
+              },
+              \"http://192.168.122.100:8080\": {
                 \"auth\": \"$AUTH_STRING\"
               }
             },
@@ -438,7 +456,15 @@ jobs:
           
           echo "✅ Docker認証設定完了（config.json直接操作）"
           LOGIN_SUCCESS=true
-          PUSH_TARGET="harbor.local"
+          
+          # HTTP接続が利用可能な場合はHTTPをPUSH_TARGETに設定
+          if [[ -n "$HARBOR_HTTP_URL" ]]; then
+            PUSH_TARGET="$HARBOR_HTTP_URL"
+            echo "Push先設定: $PUSH_TARGET (HTTP接続)"
+          else
+            PUSH_TARGET="harbor.local"
+            echo "Push先設定: $PUSH_TARGET (HTTPS fallback)"
+          fi
         fi
         
         if [[ "$LOGIN_SUCCESS" == "true" ]]; then
