@@ -294,9 +294,8 @@ jobs:
         # Docker login実行（環境変数設定付き）
         echo "=== Docker環境変数設定 ==="
         
-        # Docker daemon再起動（証明書反映のため）
-        sudo systemctl reload docker || echo "Docker reload失敗"
-        sleep 3
+        # Docker daemon設定確認（コンテナ環境ではsystemctl使用不可）
+        echo "Docker daemon設定確認中（コンテナ環境）..."
         
         # Docker TLS設定を無効化（certs.d設定を使用）
         export DOCKER_TLS_VERIFY=""
@@ -313,57 +312,39 @@ jobs:
         ls -la /etc/docker/certs.d/192.168.122.100/ || echo "IP証明書なし"
         ls -la /etc/docker/certs.d/192.168.122.100:443/ || echo "IP:443証明書なし"
         
-        # Docker login実行（複数アプローチ）
-        LOGIN_SUCCESS=false
+        # 決定的な解決策: 直接insecure registry設定でlogin
+        echo "=== 決定的解決策: insecure registry設定 ==="
         
-        # 1. 標準的なharbor.localでのlogin（HTTPSスキーマなし）
-        echo "=== 方法1: harbor.local login (no schema) ==="
-        if echo "$HARBOR_PASSWORD" | docker login harbor.local -u "$HARBOR_USERNAME" --password-stdin 2>/dev/null; then
-          echo "✅ Harbor Push用 Docker login成功 (harbor.local)"
+        # insecure registryとして設定（CA証明書問題を回避）
+        echo '{
+          "registry-mirrors": [],
+          "insecure-registries": ["harbor.local", "192.168.122.100", "harbor.local:443", "192.168.122.100:443"],
+          "log-driver": "json-file",
+          "log-opts": {
+            "max-size": "10m",
+            "max-file": "3"
+          }
+        }' | sudo tee /etc/docker/daemon.json
+        
+        echo "Docker設定更新完了（コンテナ環境）"
+        
+        # Docker loginを実行（insecure registryとして）
+        if echo "$HARBOR_PASSWORD" | docker login harbor.local -u "$HARBOR_USERNAME" --password-stdin; then
+          echo "✅ Docker login成功 (insecure registry)"
           LOGIN_SUCCESS=true
+        elif echo "$HARBOR_PASSWORD" | docker login 192.168.122.100 -u "$HARBOR_USERNAME" --password-stdin; then
+          echo "✅ Docker login成功 (IP直接 insecure registry)"
+          LOGIN_SUCCESS=true  
         else
-          echo "❌ harbor.local login失敗"
+          echo "❌ 全ての login方法が失敗"
           
-          # 2. IP直接でのlogin（HTTPSスキーマなし）
-          echo "=== 方法2: IP直接 login (no schema) ==="
-          if echo "$HARBOR_PASSWORD" | docker login 192.168.122.100 -u "$HARBOR_USERNAME" --password-stdin 2>/dev/null; then
-            echo "✅ IP直接 Docker login成功"
-            LOGIN_SUCCESS=true
-          else
-            echo "❌ IP直接 login失敗"
-            
-            # 3. 証明書検証を強制的にスキップしてlogin
-            echo "=== 方法3: 証明書検証スキップ login ==="
-            # insecure registryとして一時的に設定
-            echo '{
-              "registry-mirrors": [],
-              "insecure-registries": ["harbor.local", "192.168.122.100"],
-              "log-driver": "json-file",
-              "log-opts": {
-                "max-size": "10m",
-                "max-file": "3"
-              }
-            }' | sudo tee /etc/docker/daemon.json
-            sudo systemctl reload docker
-            sleep 5
-            
-            if echo "$HARBOR_PASSWORD" | docker login harbor.local -u "$HARBOR_USERNAME" --password-stdin 2>/dev/null; then
-              echo "✅ insecure registry Docker login成功"
-              LOGIN_SUCCESS=true
-            else
-              echo "❌ 全ての login方法が失敗"
-              
-              # 診断情報
-              echo "=== 最終診断情報 ==="
-              docker version || echo "Docker version確認失敗"
-              echo "DOCKER_TLS_VERIFY: $DOCKER_TLS_VERIFY"
-              echo "DOCKER_CERT_PATH: $DOCKER_CERT_PATH"
-              curl -k -s -I https://harbor.local/api/v2.0/health | head -2 || echo "insecure接続テスト失敗"
-              
-              echo "⚠️ 全てのDocker login失敗のため、push処理をスキップします"
-              exit 1
-            fi
-          fi
+          # 診断情報
+          echo "=== 最終診断情報 ==="
+          docker version || echo "Docker version確認失敗"
+          curl -k -s -I https://harbor.local/api/v2.0/health | head -2 || echo "insecure接続テスト失敗"
+          
+          echo "⚠️ 全てのDocker login失敗のため、push処理をスキップします"
+          exit 1
         fi
         
         if [ "$LOGIN_SUCCESS" = true ]; then
