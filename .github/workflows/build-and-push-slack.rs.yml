@@ -446,7 +446,7 @@ jobs:
         echo "SSL_CERT_FILE: $SSL_CERT_FILE"
         echo "SSL_CERT_DIR: $SSL_CERT_DIR"
         
-        if echo "$HARBOR_PASSWORD" | SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt docker login harbor.local -u "$HARBOR_USERNAME" --password-stdin; then
+        if echo "$HARBOR_PASSWORD" | docker login harbor.local -u "$HARBOR_USERNAME" --password-stdin; then
           echo "✅ HTTPS Docker login成功"
           LOGIN_SUCCESS=true
           PUSH_TARGET="harbor.local"
@@ -484,9 +484,13 @@ jobs:
         # Push先の決定（既に上記で設定済み）
         echo "Push先: $PUSH_TARGET"
         
+        # 環境変数設定してDocker pushを実行
+        export SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt
+        export SSL_CERT_DIR=/etc/ssl/certs
+        
         # latest tagのpush（システムCA証明書使用）
         echo "推す対象: $PUSH_TARGET/$HARBOR_PROJECT/slack.rs:latest"
-        if timeout 60 SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt docker push $PUSH_TARGET/$HARBOR_PROJECT/slack.rs:latest; then
+        if timeout 60 docker push $PUSH_TARGET/$HARBOR_PROJECT/slack.rs:latest; then
           echo "✅ latest push成功"
         else
           echo "⚠️ latest push失敗（継続）"
@@ -494,7 +498,7 @@ jobs:
         
         # SHA tagのpush（システムCA証明書使用）
         echo "推す対象: $PUSH_TARGET/$HARBOR_PROJECT/slack.rs:${{ github.sha }}"
-        if timeout 60 SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt docker push $PUSH_TARGET/$HARBOR_PROJECT/slack.rs:${{ github.sha }}; then
+        if timeout 60 docker push $PUSH_TARGET/$HARBOR_PROJECT/slack.rs:${{ github.sha }}; then
           echo "✅ SHA push成功"
         else
           echo "⚠️ SHA push失敗（継続）"
