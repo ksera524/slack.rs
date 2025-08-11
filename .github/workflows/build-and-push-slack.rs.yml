@@ -133,17 +133,28 @@ jobs:
         nslookup harbor.local || echo "DNS解決失敗"
         getent hosts harbor.local || echo "hosts解決失敗"
         
-        # Docker用CA証明書設定 (harbor.local名での接続用)
+        # Docker用CA証明書設定（複数形式）
+        # 1. harbor.local用
         sudo mkdir -p /etc/docker/certs.d/harbor.local
         sudo cp /tmp/k8s-ca.crt /etc/docker/certs.d/harbor.local/ca.crt
         
-        # IP用も念の為設定
+        # 2. IP直接用
         sudo mkdir -p /etc/docker/certs.d/$HARBOR_URL
         sudo cp /tmp/k8s-ca.crt /etc/docker/certs.d/$HARBOR_URL/ca.crt
         
+        # 3. HTTPS URLスキーム付き用（Docker clientが期待する形式）
+        sudo mkdir -p "/etc/docker/certs.d/harbor.local:443"
+        sudo cp /tmp/k8s-ca.crt "/etc/docker/certs.d/harbor.local:443/ca.crt"
+        
+        # 4. IP+ポート用
+        sudo mkdir -p "/etc/docker/certs.d/$HARBOR_URL:443"
+        sudo cp /tmp/k8s-ca.crt "/etc/docker/certs.d/$HARBOR_URL:443/ca.crt"
+        
         # CA証明書設定確認
         echo "=== CA証明書設定確認 ==="
-        ls -la /etc/docker/certs.d/harbor.local/ || echo "Docker CA証明書設定失敗"
+        ls -la /etc/docker/certs.d/harbor.local/ || echo "harbor.local CA証明書設定失敗"
+        ls -la /etc/docker/certs.d/harbor.local:443/ || echo "harbor.local:443 CA証明書設定失敗"
+        ls -la /etc/docker/certs.d/$HARBOR_URL/ || echo "IP CA証明書設定失敗"
         ls -la /etc/ssl/certs/k8s-ca.crt || echo "システムCA証明書設定失敗"
         
         echo "✅ CA証明書信頼設定完了"
@@ -169,11 +180,18 @@ jobs:
         
         # Docker clientでの証明書検証状況確認
         echo "=== Docker証明書設定確認 ==="
-        ls -la /etc/docker/certs.d/harbor.local/ || echo "Docker証明書ディレクトリなし"
+        ls -la /etc/docker/certs.d/harbor.local/ || echo "harbor.local証明書ディレクトリなし"
+        ls -la /etc/docker/certs.d/harbor.local:443/ || echo "harbor.local:443証明書ディレクトリなし"
         
-        # Docker loginを試行
-        if echo "$HARBOR_PASSWORD" | docker login https://harbor.local -u "$HARBOR_USERNAME" --password-stdin; then
-          echo "✅ Docker login成功"
+        # 実際のDocker loginで使用されるホスト名を確認
+        echo "=== Docker loginホスト解決確認 ==="
+        echo "Login URL: https://harbor.local"
+        echo "Expected cert path: /etc/docker/certs.d/harbor.local/ca.crt"
+        echo "Expected cert path (with port): /etc/docker/certs.d/harbor.local:443/ca.crt"
+        
+        # Docker loginを試行（HTTPSスキーマなしで試行）
+        if echo "$HARBOR_PASSWORD" | docker login harbor.local -u "$HARBOR_USERNAME" --password-stdin; then
+          echo "✅ Docker login成功（スキーマなし）"
         else
           echo "❌ Docker login失敗 - CA証明書問題の可能性"
           echo "=== 追加のCA証明書検証 ==="
@@ -225,13 +243,22 @@ jobs:
         sudo cp /tmp/k8s-ca-push.crt /usr/local/share/ca-certificates/k8s-ca-push.crt
         sudo update-ca-certificates
         
-        # Docker用CA証明書再設定（複数形式とファイル名対応）
+        # Docker用CA証明書再設定（完全な形式対応）
+        # 1. harbor.local用
         sudo mkdir -p /etc/docker/certs.d/harbor.local
         sudo cp /tmp/k8s-ca-push.crt /etc/docker/certs.d/harbor.local/ca.crt
         
-        # Docker用のclient証明書ディレクトリ設定（IP用）
+        # 2. harbor.local:443用（ポート明示）
+        sudo mkdir -p /etc/docker/certs.d/harbor.local:443
+        sudo cp /tmp/k8s-ca-push.crt /etc/docker/certs.d/harbor.local:443/ca.crt
+        
+        # 3. IP直接用
         sudo mkdir -p /etc/docker/certs.d/192.168.122.100
         sudo cp /tmp/k8s-ca-push.crt /etc/docker/certs.d/192.168.122.100/ca.crt
+        
+        # 4. IP:443用
+        sudo mkdir -p /etc/docker/certs.d/192.168.122.100:443
+        sudo cp /tmp/k8s-ca-push.crt /etc/docker/certs.d/192.168.122.100:443/ca.crt
         
         # Docker daemon設定ファイル作成（CA証明書パスを明示）
         echo '{
@@ -282,22 +309,24 @@ jobs:
         # Docker証明書ディレクトリ設定確認
         echo "Docker証明書設定確認:"
         ls -la /etc/docker/certs.d/harbor.local/ || echo "harbor.local証明書なし"
+        ls -la /etc/docker/certs.d/harbor.local:443/ || echo "harbor.local:443証明書なし"
         ls -la /etc/docker/certs.d/192.168.122.100/ || echo "IP証明書なし"
+        ls -la /etc/docker/certs.d/192.168.122.100:443/ || echo "IP:443証明書なし"
         
         # Docker login実行（複数アプローチ）
         LOGIN_SUCCESS=false
         
-        # 1. 標準的なharbor.localでのlogin
-        echo "=== 方法1: harbor.local login ==="
-        if echo "$HARBOR_PASSWORD" | docker login https://harbor.local -u "$HARBOR_USERNAME" --password-stdin 2>/dev/null; then
+        # 1. 標準的なharbor.localでのlogin（HTTPSスキーマなし）
+        echo "=== 方法1: harbor.local login (no schema) ==="
+        if echo "$HARBOR_PASSWORD" | docker login harbor.local -u "$HARBOR_USERNAME" --password-stdin 2>/dev/null; then
           echo "✅ Harbor Push用 Docker login成功 (harbor.local)"
           LOGIN_SUCCESS=true
         else
           echo "❌ harbor.local login失敗"
           
-          # 2. IP直接でのlogin
-          echo "=== 方法2: IP直接 login ==="
-          if echo "$HARBOR_PASSWORD" | docker login https://192.168.122.100 -u "$HARBOR_USERNAME" --password-stdin 2>/dev/null; then
+          # 2. IP直接でのlogin（HTTPSスキーマなし）
+          echo "=== 方法2: IP直接 login (no schema) ==="
+          if echo "$HARBOR_PASSWORD" | docker login 192.168.122.100 -u "$HARBOR_USERNAME" --password-stdin 2>/dev/null; then
             echo "✅ IP直接 Docker login成功"
             LOGIN_SUCCESS=true
           else
@@ -345,10 +374,10 @@ jobs:
         echo "Docker push実行中..."
         
         # Push先の決定（login成功した方法に基づく）
-        if echo "$HARBOR_PASSWORD" | docker login https://harbor.local -u "$HARBOR_USERNAME" --password-stdin 2>/dev/null; then
+        if echo "$HARBOR_PASSWORD" | docker login harbor.local -u "$HARBOR_USERNAME" --password-stdin 2>/dev/null; then
           PUSH_TARGET="harbor.local"
-          echo "Push先: harbor.local (HTTPS)"
-        elif echo "$HARBOR_PASSWORD" | docker login https://192.168.122.100 -u "$HARBOR_USERNAME" --password-stdin 2>/dev/null; then
+          echo "Push先: harbor.local (CA証明書認証)"
+        elif echo "$HARBOR_PASSWORD" | docker login 192.168.122.100 -u "$HARBOR_USERNAME" --password-stdin 2>/dev/null; then
           PUSH_TARGET="192.168.122.100"  
           echo "Push先: 192.168.122.100 (IP直接)"
         else
