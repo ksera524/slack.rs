@@ -90,7 +90,8 @@ jobs:
         
         # Docker login using insecure registry (HTTP)
         echo "Logging into Harbor using insecure registry..."
-        echo "$HARBOR_PASSWORD" | docker login $HARBOR_URL -u "$HARBOR_USERNAME" --password-stdin
+        # Force HTTP connection by adding http:// prefix
+        echo "$HARBOR_PASSWORD" | docker login http://$HARBOR_URL -u "$HARBOR_USERNAME" --password-stdin
         
         # Build Docker images
         echo "Building Docker images..."
