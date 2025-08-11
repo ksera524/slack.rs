@@ -83,11 +83,22 @@ jobs:
           cp /shared/k8s-ca.crt /tmp/k8s-ca.crt
         else
           echo "kubectl経由でCA証明書を取得"
-          if kubectl get secret ca-key-pair -n cert-manager -o jsonpath='{.data.tls\.crt}' | base64 -d > /tmp/k8s-ca.crt; then
-            echo "✅ CA証明書取得成功"
+          
+          # Harbor TLS秘密からCA証明書を取得（最優先）
+          if kubectl get secret harbor-tls-secret -n harbor -o jsonpath='{.data.ca\.crt}' | base64 -d > /tmp/k8s-ca.crt 2>/dev/null && [[ -s /tmp/k8s-ca.crt ]]; then
+            echo "✅ Harbor TLS秘密からCA証明書取得成功"
+          elif kubectl get secret ca-key-pair -n cert-manager -o jsonpath='{.data.tls\.crt}' | base64 -d > /tmp/k8s-ca.crt 2>/dev/null && [[ -s /tmp/k8s-ca.crt ]]; then
+            echo "✅ cert-manager CA証明書取得成功"
           else
             echo "❌ CA証明書取得失敗、空ファイル作成"
             touch /tmp/k8s-ca.crt
+          fi
+          
+          # CA証明書の詳細確認
+          if [[ -s /tmp/k8s-ca.crt ]]; then
+            echo "=== CA証明書詳細確認 ==="
+            openssl x509 -in /tmp/k8s-ca.crt -noout -subject 2>/dev/null || echo "Subject確認失敗"
+            openssl x509 -in /tmp/k8s-ca.crt -noout -issuer 2>/dev/null || echo "Issuer確認失敗"
           fi
         fi
         
@@ -249,8 +260,24 @@ jobs:
         # 完全なCA証明書再設定
         echo "=== Harbor Push用CA証明書再設定 ==="
         
-        # CA証明書を再取得
-        kubectl get secret ca-key-pair -n cert-manager -o jsonpath='{.data.tls\.crt}' | base64 -d > /tmp/k8s-ca-push.crt
+        # 正しいCA証明書を再取得
+        echo "Harbor Push用CA証明書取得中..."
+        
+        # Harbor TLS秘密からCA証明書を取得（最優先）
+        if kubectl get secret harbor-tls-secret -n harbor -o jsonpath='{.data.ca\.crt}' | base64 -d > /tmp/k8s-ca-push.crt 2>/dev/null && [[ -s /tmp/k8s-ca-push.crt ]]; then
+          echo "✅ Harbor TLS秘密からCA証明書取得成功"
+        elif kubectl get secret ca-key-pair -n cert-manager -o jsonpath='{.data.tls\.crt}' | base64 -d > /tmp/k8s-ca-push.crt 2>/dev/null && [[ -s /tmp/k8s-ca-push.crt ]]; then
+          echo "✅ cert-manager CA証明書取得成功"
+        else
+          echo "❌ CA証明書取得失敗"
+          # フォールバック: 前回の証明書を使用
+          if [[ -f /tmp/k8s-ca.crt ]]; then
+            cp /tmp/k8s-ca.crt /tmp/k8s-ca-push.crt
+            echo "前回のCA証明書を使用"
+          else
+            touch /tmp/k8s-ca-push.crt
+          fi
+        fi
         
         # システムCA信頼ストアに再追加
         sudo cp /tmp/k8s-ca-push.crt /usr/local/share/ca-certificates/k8s-ca-push.crt
