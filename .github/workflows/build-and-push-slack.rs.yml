@@ -369,21 +369,34 @@ jobs:
           }
         }' | sudo tee /etc/docker/daemon.json
         
-        # Docker client環境変数でHTTPS証明書検証を強制有効化
-        export DOCKER_TLS_VERIFY="1"
-        export DOCKER_CERT_PATH="/etc/docker/certs.d/harbor.local"
+        # Docker client環境変数の調整（insecure registryではなく証明書ベース）
+        # DOCKER_TLS_VERIFYは環境によって問題を起こす可能性があるため無効化
+        export DOCKER_TLS_VERIFY=""
+        export DOCKER_CERT_PATH=""
+        export DOCKER_HOST=""
         
-        # CA証明書の複数配置（Docker clientが確実に見つけられるように）
+        # Docker clientが期待する証明書ファイルを完全配置
         sudo mkdir -p /etc/docker/certs.d/harbor.local/
-        sudo mkdir -p /etc/docker/certs.d/https://harbor.local/
         sudo mkdir -p /etc/docker/certs.d/harbor.local:443/
         
-        sudo cp /tmp/k8s-ca-push.crt /etc/docker/certs.d/harbor.local/ca.crt
-        sudo cp /tmp/k8s-ca-push.crt /etc/docker/certs.d/https://harbor.local/ca.crt
-        sudo cp /tmp/k8s-ca-push.crt /etc/docker/certs.d/harbor.local:443/ca.crt
+        # Harbor証明書を取得
+        echo "Harbor証明書を取得中..."
+        kubectl get secret harbor-tls-secret -n harbor -o jsonpath='{.data.tls\.crt}' | base64 -d > /tmp/harbor-cert.crt
         
-        # cert.pemとしても配置（Docker clientの複数認識パターン対応）
-        sudo cp /tmp/k8s-ca-push.crt /etc/docker/certs.d/harbor.local/cert.pem
+        # CA証明書配置 (ca.crt, ca.pem)
+        sudo cp /tmp/k8s-ca-push.crt /etc/docker/certs.d/harbor.local/ca.crt
+        sudo cp /tmp/k8s-ca-push.crt /etc/docker/certs.d/harbor.local/ca.pem
+        sudo cp /tmp/k8s-ca-push.crt /etc/docker/certs.d/harbor.local:443/ca.crt
+        sudo cp /tmp/k8s-ca-push.crt /etc/docker/certs.d/harbor.local:443/ca.pem
+        
+        # Harbor証明書も配置 (cert.pem, client.cert)
+        sudo cp /tmp/harbor-cert.crt /etc/docker/certs.d/harbor.local/cert.pem
+        sudo cp /tmp/harbor-cert.crt /etc/docker/certs.d/harbor.local/client.cert
+        
+        # キーファイルも配置（必要に応じて）
+        if kubectl get secret harbor-tls-secret -n harbor -o jsonpath='{.data.tls\.key}' | base64 -d > /tmp/harbor-key.key 2>/dev/null; then
+          sudo cp /tmp/harbor-key.key /etc/docker/certs.d/harbor.local/client.key
+        fi
         
         echo "=== Docker client CA証明書設定完了 ==="
         ls -la /etc/docker/certs.d/harbor.local/
