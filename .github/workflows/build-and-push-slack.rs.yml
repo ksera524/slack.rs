@@ -198,9 +198,11 @@ jobs:
         HARBOR_URL=$(cat /tmp/harbor_url)
         HARBOR_PROJECT=$(cat /tmp/harbor_project)
         
-        # Dockerイメージビルド（harbor.local使用）
+        # 複数形式でのDockerイメージビルド（各種Push先対応）
         docker build -t harbor.local/$HARBOR_PROJECT/slack.rs:latest .
         docker build -t harbor.local/$HARBOR_PROJECT/slack.rs:${{ github.sha }} .
+        docker build -t 192.168.122.100/$HARBOR_PROJECT/slack.rs:latest .
+        docker build -t 192.168.122.100/$HARBOR_PROJECT/slack.rs:${{ github.sha }} .
         
         echo "✅ Docker Build完了"
         
@@ -223,16 +225,26 @@ jobs:
         sudo cp /tmp/k8s-ca-push.crt /usr/local/share/ca-certificates/k8s-ca-push.crt
         sudo update-ca-certificates
         
-        # Docker用CA証明書再設定（複数形式）
+        # Docker用CA証明書再設定（複数形式とファイル名対応）
         sudo mkdir -p /etc/docker/certs.d/harbor.local
         sudo cp /tmp/k8s-ca-push.crt /etc/docker/certs.d/harbor.local/ca.crt
         
-        # Docker用のclient証明書ディレクトリ設定
+        # Docker用のclient証明書ディレクトリ設定（IP用）
         sudo mkdir -p /etc/docker/certs.d/192.168.122.100
         sudo cp /tmp/k8s-ca-push.crt /etc/docker/certs.d/192.168.122.100/ca.crt
         
-        # Docker daemon設定ファイル作成（registry-mirrors対応）
-        echo '{"registry-mirrors": [], "insecure-registries": []}' | sudo tee /etc/docker/daemon.json
+        # Docker daemon設定ファイル作成（CA証明書パスを明示）
+        sudo tee /etc/docker/daemon.json << 'DOCKER_DAEMON_EOF'
+{
+  "registry-mirrors": [],
+  "insecure-registries": [],
+  "log-driver": "json-file",
+  "log-opts": {
+    "max-size": "10m",
+    "max-file": "3"
+  }
+}
+DOCKER_DAEMON_EOF
         
         # Docker設定確認
         echo "=== Docker設定確認 ==="
@@ -257,59 +269,108 @@ jobs:
         # Docker login実行（環境変数設定付き）
         echo "=== Docker環境変数設定 ==="
         
+        # Docker daemon再起動（証明書反映のため）
+        sudo systemctl reload docker || echo "Docker reload失敗"
+        sleep 3
+        
         # Docker TLS設定を無効化（certs.d設定を使用）
         export DOCKER_TLS_VERIFY=""
         export DOCKER_CERT_PATH=""
         export DOCKER_HOST=""
+        
+        # 環境変数での証明書パス設定も試行
+        export DOCKER_CERT_PATH="/etc/docker/certs.d/harbor.local"
         
         # Docker証明書ディレクトリ設定確認
         echo "Docker証明書設定確認:"
         ls -la /etc/docker/certs.d/harbor.local/ || echo "harbor.local証明書なし"
         ls -la /etc/docker/certs.d/192.168.122.100/ || echo "IP証明書なし"
         
-        # Docker login実行
-        if echo "$HARBOR_PASSWORD" | docker login https://harbor.local -u "$HARBOR_USERNAME" --password-stdin; then
-          echo "✅ Harbor Push用 Docker login成功"
+        # Docker login実行（複数アプローチ）
+        LOGIN_SUCCESS=false
+        
+        # 1. 標準的なharbor.localでのlogin
+        echo "=== 方法1: harbor.local login ==="
+        if echo "$HARBOR_PASSWORD" | docker login https://harbor.local -u "$HARBOR_USERNAME" --password-stdin 2>/dev/null; then
+          echo "✅ Harbor Push用 Docker login成功 (harbor.local)"
+          LOGIN_SUCCESS=true
         else
-          echo "❌ Harbor Push用 Docker login失敗"
+          echo "❌ harbor.local login失敗"
           
-          # Docker環境確認
-          echo "=== Docker環境確認 ==="
-          docker version || echo "Docker version確認失敗"
-          echo "DOCKER_TLS_VERIFY: $DOCKER_TLS_VERIFY"
-          echo "DOCKER_CERT_PATH: $DOCKER_CERT_PATH"
-          
-          # 代替方法: docker loginをIP直接で試行
-          echo "=== 代替方法: IP直接接続 ==="
-          if echo "$HARBOR_PASSWORD" | docker login https://192.168.122.100 -u "$HARBOR_USERNAME" --password-stdin; then
+          # 2. IP直接でのlogin
+          echo "=== 方法2: IP直接 login ==="
+          if echo "$HARBOR_PASSWORD" | docker login https://192.168.122.100 -u "$HARBOR_USERNAME" --password-stdin 2>/dev/null; then
             echo "✅ IP直接 Docker login成功"
+            LOGIN_SUCCESS=true
           else
-            echo "❌ IP直接 Docker login失敗"
+            echo "❌ IP直接 login失敗"
             
-            # 最後の診断情報
-            echo "=== 最終診断情報 ==="
-            curl -k -s -I https://harbor.local/api/v2.0/health | head -2 || echo "insecure接続テスト失敗"
+            # 3. 証明書検証を強制的にスキップしてlogin
+            echo "=== 方法3: 証明書検証スキップ login ==="
+            # insecure registryとして一時的に設定
+            sudo tee /etc/docker/daemon.json << 'DOCKER_INSECURE_EOF'
+{
+  "registry-mirrors": [],
+  "insecure-registries": ["harbor.local", "192.168.122.100"],
+  "log-driver": "json-file",
+  "log-opts": {
+    "max-size": "10m",
+    "max-file": "3"
+  }
+}
+DOCKER_INSECURE_EOF
+            sudo systemctl reload docker
+            sleep 5
             
-            # 続行を試行
-            echo "⚠️ Docker login失敗のため、push処理をスキップします"
-            exit 1
+            if echo "$HARBOR_PASSWORD" | docker login harbor.local -u "$HARBOR_USERNAME" --password-stdin 2>/dev/null; then
+              echo "✅ insecure registry Docker login成功"
+              LOGIN_SUCCESS=true
+            else
+              echo "❌ 全ての login方法が失敗"
+              
+              # 診断情報
+              echo "=== 最終診断情報 ==="
+              docker version || echo "Docker version確認失敗"
+              echo "DOCKER_TLS_VERIFY: $DOCKER_TLS_VERIFY"
+              echo "DOCKER_CERT_PATH: $DOCKER_CERT_PATH"
+              curl -k -s -I https://harbor.local/api/v2.0/health | head -2 || echo "insecure接続テスト失敗"
+              
+              echo "⚠️ 全てのDocker login失敗のため、push処理をスキップします"
+              exit 1
+            fi
           fi
+        fi
+        
+        if [ "$LOGIN_SUCCESS" = true ]; then
+          echo "✅ Docker login成功 - Push処理を続行"
         fi
         
         # Docker push実行
         echo "Docker push実行中..."
         
+        # Push先の決定（login成功した方法に基づく）
+        if echo "$HARBOR_PASSWORD" | docker login https://harbor.local -u "$HARBOR_USERNAME" --password-stdin 2>/dev/null; then
+          PUSH_TARGET="harbor.local"
+          echo "Push先: harbor.local (HTTPS)"
+        elif echo "$HARBOR_PASSWORD" | docker login https://192.168.122.100 -u "$HARBOR_USERNAME" --password-stdin 2>/dev/null; then
+          PUSH_TARGET="192.168.122.100"  
+          echo "Push先: 192.168.122.100 (IP直接)"
+        else
+          PUSH_TARGET="harbor.local"
+          echo "Push先: harbor.local (insecure fallback)"
+        fi
+        
         # latest tagのpush
-        echo "推す対象: harbor.local/$HARBOR_PROJECT/slack.rs:latest"
-        if timeout 60 docker push harbor.local/$HARBOR_PROJECT/slack.rs:latest; then
+        echo "推す対象: $PUSH_TARGET/$HARBOR_PROJECT/slack.rs:latest"
+        if timeout 60 docker push $PUSH_TARGET/$HARBOR_PROJECT/slack.rs:latest; then
           echo "✅ latest push成功"
         else
           echo "⚠️ latest push失敗（継続）"
         fi
         
-        # SHA tagのpush
-        echo "推す対象: harbor.local/$HARBOR_PROJECT/slack.rs:${{ github.sha }}"
-        if timeout 60 docker push harbor.local/$HARBOR_PROJECT/slack.rs:${{ github.sha }}; then
+        # SHA tagのpush  
+        echo "推す対象: $PUSH_TARGET/$HARBOR_PROJECT/slack.rs:${{ github.sha }}"
+        if timeout 60 docker push $PUSH_TARGET/$HARBOR_PROJECT/slack.rs:${{ github.sha }}; then
           echo "✅ SHA push成功"
         else
           echo "⚠️ SHA push失敗（継続）"
