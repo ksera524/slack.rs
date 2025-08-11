@@ -234,17 +234,15 @@ jobs:
         sudo cp /tmp/k8s-ca-push.crt /etc/docker/certs.d/192.168.122.100/ca.crt
         
         # Docker daemon設定ファイル作成（CA証明書パスを明示）
-        sudo tee /etc/docker/daemon.json << 'DOCKER_DAEMON_EOF'
-{
-  "registry-mirrors": [],
-  "insecure-registries": [],
-  "log-driver": "json-file",
-  "log-opts": {
-    "max-size": "10m",
-    "max-file": "3"
-  }
-}
-DOCKER_DAEMON_EOF
+        echo '{
+          "registry-mirrors": [],
+          "insecure-registries": [],
+          "log-driver": "json-file",
+          "log-opts": {
+            "max-size": "10m",
+            "max-file": "3"
+          }
+        }' | sudo tee /etc/docker/daemon.json
         
         # Docker設定確認
         echo "=== Docker設定確認 ==="
@@ -308,17 +306,15 @@ DOCKER_DAEMON_EOF
             # 3. 証明書検証を強制的にスキップしてlogin
             echo "=== 方法3: 証明書検証スキップ login ==="
             # insecure registryとして一時的に設定
-            sudo tee /etc/docker/daemon.json << 'DOCKER_INSECURE_EOF'
-{
-  "registry-mirrors": [],
-  "insecure-registries": ["harbor.local", "192.168.122.100"],
-  "log-driver": "json-file",
-  "log-opts": {
-    "max-size": "10m",
-    "max-file": "3"
-  }
-}
-DOCKER_INSECURE_EOF
+            echo '{
+              "registry-mirrors": [],
+              "insecure-registries": ["harbor.local", "192.168.122.100"],
+              "log-driver": "json-file",
+              "log-opts": {
+                "max-size": "10m",
+                "max-file": "3"
+              }
+            }' | sudo tee /etc/docker/daemon.json
             sudo systemctl reload docker
             sleep 5
             
