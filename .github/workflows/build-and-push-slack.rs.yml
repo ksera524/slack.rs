@@ -1,7 +1,7 @@
 # GitHub Actions workflow for slack.rs
-# Insecure Registry Approach - Simplified and Practical
+# Final approach: Skip TLS verification for Harbor access
 
-name: Build and Push to Harbor (Insecure Registry) - slack.rs
+name: Final Harbor Push Solution - slack.rs
 
 on:
   push:
@@ -49,104 +49,31 @@ jobs:
         chmod 600 /tmp/harbor_*
         echo "✅ Harbor credentials retrieved successfully"
         
-    - name: Configure Docker for insecure registry
+    - name: Alternative approach - Use skopeo for Harbor push
       run: |
-        echo "=== Configure Docker for insecure registry ==="
-        
-        HARBOR_URL=$(cat /tmp/harbor_url)
-        
-        # Create Docker daemon configuration for insecure registry
-        sudo mkdir -p /etc/docker
-        echo '{
-          "insecure-registries": ["'$HARBOR_URL'", "192.168.122.100:8080", "harbor.local"],
-          "registry-mirrors": [],
-          "log-driver": "json-file",
-          "log-opts": {
-            "max-size": "10m",
-            "max-file": "3"
-          }
-        }' | sudo tee /etc/docker/daemon.json
-        
-        # Add harbor.local to hosts file for DNS resolution
-        echo "$HARBOR_URL harbor.local" | sudo tee -a /etc/hosts
-        
-        # Verify Docker configuration
-        echo "Docker daemon.json:"
-        cat /etc/docker/daemon.json
-        
-        echo "Hosts file entry:"
-        grep -E "(harbor|$HARBOR_URL)" /etc/hosts || echo "No harbor entries found"
-        
-        echo "✅ Docker insecure registry configuration completed"
-        
-    - name: Docker login and build
-      run: |
-        echo "=== Docker login and build ==="
+        echo "=== Alternative approach - Use skopeo for Harbor push ==="
         
         HARBOR_USERNAME=$(cat /tmp/harbor_username)
         HARBOR_PASSWORD=$(cat /tmp/harbor_password)
         HARBOR_URL=$(cat /tmp/harbor_url)
         HARBOR_PROJECT=$(cat /tmp/harbor_project)
         
-        # Set Docker environment variables for insecure registry
-        export DOCKER_TLS_VERIFY=""
-        export DOCKER_HOST=""
-        export DOCKER_CERT_PATH=""
+        # Install skopeo for Docker registry operations with TLS skip
+        sudo apt-get update && sudo apt-get install -y skopeo
         
-        # Docker login using insecure registry (HTTP)
-        echo "Logging into Harbor using insecure registry..."
-        echo "Docker daemon configuration:"
-        cat /etc/docker/daemon.json || echo "daemon.json not found"
-        
-        # Try multiple approaches for insecure connection
-        echo "Attempting Docker login with HTTP..."
-        if echo "$HARBOR_PASSWORD" | docker login http://$HARBOR_URL -u "$HARBOR_USERNAME" --password-stdin; then
-          echo "✅ HTTP login successful"
-        else
-          echo "HTTP login failed, trying with IP only..."
-          if echo "$HARBOR_PASSWORD" | docker login $HARBOR_URL -u "$HARBOR_USERNAME" --password-stdin; then
-            echo "✅ IP-only login successful"  
-          else
-            echo "❌ Both login attempts failed"
-            echo "Checking Docker daemon status..."
-            docker info | head -20
-            exit 1
-          fi
-        fi
-        
-        # Build Docker images
+        # Build Docker images locally
         echo "Building Docker images..."
-        docker build -t $HARBOR_URL/$HARBOR_PROJECT/slack.rs:latest .
-        docker build -t $HARBOR_URL/$HARBOR_PROJECT/slack.rs:${{ github.sha }} .
+        docker build -t local-slack-rs:latest .
+        docker build -t local-slack-rs:${{ github.sha }} .
         
-        echo "✅ Docker login and build completed successfully"
+        # Push using skopeo with TLS skip
+        echo "Pushing to Harbor using skopeo with TLS skip..."
         
-    - name: Push to Harbor
-      run: |
-        echo "=== Push to Harbor ==="
+        # Export images to tar and push with skopeo
+        docker save local-slack-rs:latest | skopeo copy --dest-tls-verify=false --dest-creds="$HARBOR_USERNAME:$HARBOR_PASSWORD" docker-archive:/dev/stdin docker://$HARBOR_URL/$HARBOR_PROJECT/slack.rs:latest
+        docker save local-slack-rs:${{ github.sha }} | skopeo copy --dest-tls-verify=false --dest-creds="$HARBOR_USERNAME:$HARBOR_PASSWORD" docker-archive:/dev/stdin docker://$HARBOR_URL/$HARBOR_PROJECT/slack.rs:${{ github.sha }}
         
-        HARBOR_URL=$(cat /tmp/harbor_url)
-        HARBOR_PROJECT=$(cat /tmp/harbor_project)
-        
-        # Push latest tag
-        echo "Pushing $HARBOR_URL/$HARBOR_PROJECT/slack.rs:latest"
-        if docker push $HARBOR_URL/$HARBOR_PROJECT/slack.rs:latest; then
-          echo "✅ Latest tag pushed successfully"
-        else
-          echo "❌ Failed to push latest tag"
-          exit 1
-        fi
-        
-        # Push SHA tag
-        echo "Pushing $HARBOR_URL/$HARBOR_PROJECT/slack.rs:${{ github.sha }}"
-        if docker push $HARBOR_URL/$HARBOR_PROJECT/slack.rs:${{ github.sha }}; then
-          echo "✅ SHA tag pushed successfully"
-        else
-          echo "❌ Failed to push SHA tag"
-          exit 1
-        fi
-        
-        echo "✅ All images pushed successfully to Harbor"
+        echo "✅ Images pushed successfully to Harbor using skopeo"
         
     - name: Verify Harbor repository
       run: |
@@ -157,8 +84,8 @@ jobs:
         HARBOR_URL=$(cat /tmp/harbor_url)
         HARBOR_PROJECT=$(cat /tmp/harbor_project)
         
-        # Verify pushed images via Harbor API
-        if curl -f -u "$HARBOR_USERNAME:$HARBOR_PASSWORD" "http://$HARBOR_URL/v2/$HARBOR_PROJECT/slack.rs/tags/list"; then
+        # Verify pushed images via Harbor API (skip TLS verification)
+        if curl -k -f -u "$HARBOR_USERNAME:$HARBOR_PASSWORD" "https://$HARBOR_URL/v2/$HARBOR_PROJECT/slack.rs/tags/list"; then
           echo "✅ Harbor repository verified successfully"
         else
           echo "⚠️  Harbor API verification failed (images may still be available)"
