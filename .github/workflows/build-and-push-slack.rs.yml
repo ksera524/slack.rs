@@ -69,9 +69,12 @@ jobs:
         # Push using skopeo with TLS skip
         echo "Pushing to Harbor using skopeo with TLS skip..."
         
-        # Export images to tar and push with skopeo
-        docker save local-slack-rs:latest | skopeo copy --dest-tls-verify=false --dest-creds="$HARBOR_USERNAME:$HARBOR_PASSWORD" docker-archive:/dev/stdin docker://$HARBOR_URL/$HARBOR_PROJECT/slack.rs:latest
-        docker save local-slack-rs:${{ github.sha }} | skopeo copy --dest-tls-verify=false --dest-creds="$HARBOR_USERNAME:$HARBOR_PASSWORD" docker-archive:/dev/stdin docker://$HARBOR_URL/$HARBOR_PROJECT/slack.rs:${{ github.sha }}
+        # Push using skopeo with intermediate files (avoid pipe issues)
+        docker save local-slack-rs:latest -o /tmp/slack-rs-latest.tar
+        skopeo copy --dest-tls-verify=false --dest-creds="$HARBOR_USERNAME:$HARBOR_PASSWORD" docker-archive:/tmp/slack-rs-latest.tar docker://$HARBOR_URL/$HARBOR_PROJECT/slack.rs:latest
+        
+        docker save local-slack-rs:${{ github.sha }} -o /tmp/slack-rs-sha.tar
+        skopeo copy --dest-tls-verify=false --dest-creds="$HARBOR_USERNAME:$HARBOR_PASSWORD" docker-archive:/tmp/slack-rs-sha.tar docker://$HARBOR_URL/$HARBOR_PROJECT/slack.rs:${{ github.sha }}
         
         echo "✅ Images pushed successfully to Harbor using skopeo"
         
@@ -98,7 +101,7 @@ jobs:
       run: |
         echo "=== Cleanup ==="
         
-        # Remove sensitive credential files
-        rm -f /tmp/harbor_* /tmp/kubeconfig
+        # Remove sensitive credential files and temporary tar files
+        rm -f /tmp/harbor_* /tmp/kubeconfig /tmp/slack-rs-*.tar
         
         echo "✅ Cleanup completed"
