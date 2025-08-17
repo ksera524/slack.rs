@@ -41,10 +41,17 @@ jobs:
         kubectl config use-context default --kubeconfig=$KUBECONFIG
         
         # Get Harbor credentials with proper JSON parsing
-        kubectl get secret harbor-auth -n arc-systems -o jsonpath='{.data.HARBOR_USERNAME}' | base64 -d > /tmp/harbor_username
-        kubectl get secret harbor-auth -n arc-systems -o jsonpath='{.data.HARBOR_PASSWORD}' | base64 -d > /tmp/harbor_password
-        kubectl get secret harbor-auth -n arc-systems -o jsonpath='{.data.HARBOR_URL}' | base64 -d > /tmp/harbor_url
-        kubectl get secret harbor-auth -n arc-systems -o jsonpath='{.data.HARBOR_PROJECT}' | base64 -d > /tmp/harbor_project
+        echo "Testing kubectl access..."
+        kubectl auth can-i get secrets -n arc-systems || echo "No kubectl permission"
+        
+        kubectl get secret harbor-auth -n arc-systems -o jsonpath='{.data.HARBOR_USERNAME}' | base64 -d > /tmp/harbor_username || echo "Failed to get HARBOR_USERNAME"
+        kubectl get secret harbor-auth -n arc-systems -o jsonpath='{.data.HARBOR_PASSWORD}' | base64 -d > /tmp/harbor_password || echo "Failed to get HARBOR_PASSWORD"
+        kubectl get secret harbor-auth -n arc-systems -o jsonpath='{.data.HARBOR_URL}' | base64 -d > /tmp/harbor_url || echo "Failed to get HARBOR_URL"
+        kubectl get secret harbor-auth -n arc-systems -o jsonpath='{.data.HARBOR_PROJECT}' | base64 -d > /tmp/harbor_project || echo "Failed to get HARBOR_PROJECT"
+        
+        # Debug file contents
+        echo "harbor_username file content: $(cat /tmp/harbor_username 2>/dev/null || echo 'empty')"
+        echo "harbor_url file content: $(cat /tmp/harbor_url 2>/dev/null || echo 'empty')"
         
         chmod 600 /tmp/harbor_*
         echo "✅ Harbor credentials retrieved successfully"
