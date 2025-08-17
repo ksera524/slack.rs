@@ -40,11 +40,11 @@ jobs:
             --kubeconfig=$KUBECONFIG
         kubectl config use-context default --kubeconfig=$KUBECONFIG
         
-        # Get Harbor credentials
-        kubectl get secret harbor-auth -n arc-systems -o yaml | grep "HARBOR_USERNAME:" | awk '{print $2}' | base64 -d > /tmp/harbor_username
-        kubectl get secret harbor-auth -n arc-systems -o yaml | grep "HARBOR_PASSWORD:" | awk '{print $2}' | base64 -d > /tmp/harbor_password
-        kubectl get secret harbor-auth -n arc-systems -o yaml | grep "HARBOR_URL:" | awk '{print $2}' | base64 -d > /tmp/harbor_url
-        kubectl get secret harbor-auth -n arc-systems -o yaml | grep "HARBOR_PROJECT:" | awk '{print $2}' | base64 -d > /tmp/harbor_project
+        # Get Harbor credentials with proper JSON parsing
+        kubectl get secret harbor-auth -n arc-systems -o jsonpath='{.data.HARBOR_USERNAME}' | base64 -d > /tmp/harbor_username
+        kubectl get secret harbor-auth -n arc-systems -o jsonpath='{.data.HARBOR_PASSWORD}' | base64 -d > /tmp/harbor_password
+        kubectl get secret harbor-auth -n arc-systems -o jsonpath='{.data.HARBOR_URL}' | base64 -d > /tmp/harbor_url
+        kubectl get secret harbor-auth -n arc-systems -o jsonpath='{.data.HARBOR_PROJECT}' | base64 -d > /tmp/harbor_project
         
         chmod 600 /tmp/harbor_*
         echo "✅ Harbor credentials retrieved successfully"
@@ -58,23 +58,35 @@ jobs:
         HARBOR_URL=$(cat /tmp/harbor_url)
         HARBOR_PROJECT=$(cat /tmp/harbor_project)
         
+        # Debug Harbor credentials
+        echo "Harbor URL: '$HARBOR_URL'"
+        echo "Harbor Project: '$HARBOR_PROJECT'"
+        echo "Harbor Username: '$HARBOR_USERNAME'"
+        
+        # Validate variables are not empty
+        if [ -z "$HARBOR_URL" ] || [ -z "$HARBOR_PROJECT" ] || [ -z "$HARBOR_USERNAME" ]; then
+          echo "❌ Harbor credentials are missing or empty"
+          echo "URL: '$HARBOR_URL', Project: '$HARBOR_PROJECT', Username: '$HARBOR_USERNAME'"
+          exit 1
+        fi
+        
         # Install skopeo for Docker registry operations with TLS skip
         sudo apt-get update && sudo apt-get install -y skopeo
         
         # Build Docker images locally
         echo "Building Docker images..."
-        docker build -t local-slack-rs:latest .
-        docker build -t local-slack-rs:${{ github.sha }} .
+        docker build -t local-slack.rs:latest .
+        docker build -t local-slack.rs:${{ github.sha }} .
         
         # Push using skopeo with TLS skip
         echo "Pushing to Harbor using skopeo with TLS skip..."
         
         # Push using skopeo with intermediate files (avoid pipe issues)
-        docker save local-slack-rs:latest -o /tmp/slack-rs-latest.tar
-        skopeo copy --dest-tls-verify=false --dest-creds="$HARBOR_USERNAME:$HARBOR_PASSWORD" docker-archive:/tmp/slack-rs-latest.tar docker://$HARBOR_URL/$HARBOR_PROJECT/slack.rs:latest
+        docker save local-slack.rs:latest -o /tmp/slack.rs-latest.tar
+        skopeo copy --dest-tls-verify=false --dest-creds="$HARBOR_USERNAME:$HARBOR_PASSWORD" docker-archive:/tmp/slack.rs-latest.tar docker://$HARBOR_URL/$HARBOR_PROJECT/slack.rs:latest
         
-        docker save local-slack-rs:${{ github.sha }} -o /tmp/slack-rs-sha.tar
-        skopeo copy --dest-tls-verify=false --dest-creds="$HARBOR_USERNAME:$HARBOR_PASSWORD" docker-archive:/tmp/slack-rs-sha.tar docker://$HARBOR_URL/$HARBOR_PROJECT/slack.rs:${{ github.sha }}
+        docker save local-slack.rs:${{ github.sha }} -o /tmp/slack.rs-sha.tar
+        skopeo copy --dest-tls-verify=false --dest-creds="$HARBOR_USERNAME:$HARBOR_PASSWORD" docker-archive:/tmp/slack.rs-sha.tar docker://$HARBOR_URL/$HARBOR_PROJECT/slack.rs:${{ github.sha }}
         
         echo "✅ Images pushed successfully to Harbor using skopeo"
         
@@ -102,6 +114,6 @@ jobs:
         echo "=== Cleanup ==="
         
         # Remove sensitive credential files and temporary tar files
-        rm -f /tmp/harbor_* /tmp/kubeconfig /tmp/slack-rs-*.tar
+        rm -f /tmp/harbor_* /tmp/kubeconfig /tmp/slack.rs-*.tar
         
         echo "✅ Cleanup completed"
