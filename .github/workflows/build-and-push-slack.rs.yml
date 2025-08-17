@@ -11,8 +11,8 @@ on:
 
 jobs:
   build-and-push:
-    runs-on: [self-hosted, linux, k8s, slack-rs]  # Custom Runner 
-    
+    runs-on: slack-rs-runners  # RunnerScaleSet name
+  
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
