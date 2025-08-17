@@ -58,7 +58,7 @@ jobs:
         HARBOR_URL=$(cat /tmp/harbor_url)
         HARBOR_PROJECT=$(cat /tmp/harbor_project)
         
-        # Debug Harbor credentials
+        # Debug Harbor credentials (without showing sensitive data)
         echo "Harbor URL: '$HARBOR_URL'"
         echo "Harbor Project: '$HARBOR_PROJECT'"
         echo "Harbor Username: '$HARBOR_USERNAME'"
@@ -114,6 +114,6 @@ jobs:
         echo "=== Cleanup ==="
         
         # Remove sensitive credential files and temporary tar files
-        rm -f /tmp/harbor_* /tmp/kubeconfig /tmp/slack.rs-*.tar
+        rm -f /tmp/harbor_* /tmp/kubeconfig /tmp/slack-rs-*.tar
         
         echo "✅ Cleanup completed"
