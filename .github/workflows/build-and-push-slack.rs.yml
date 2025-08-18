@@ -11,7 +11,7 @@ on:
 
 jobs:
   build-and-push:
-    runs-on: k8s-myhome-runners  # RunnerScaleSet name
+    runs-on: slack-rs-runners  # RunnerScaleSet name
   
     steps:
     - name: Checkout code
