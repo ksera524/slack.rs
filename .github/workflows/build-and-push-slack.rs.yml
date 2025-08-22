@@ -5,13 +5,13 @@ name: Build and Push to Harbor - slack.rs
 
 on:
   push:
-    branches: [ master, main, develop ]
+    branches: [ master, main, develop, test-runner ]
   pull_request:
     branches: [ main ]
 
 jobs:
   build-and-push:
-    runs-on: slack.rs-runners  # 新しいRunnerScaleSet
+    runs-on: slack-rs-runners  # 新しいRunnerScaleSet
     
     steps:
     - name: Checkout code
