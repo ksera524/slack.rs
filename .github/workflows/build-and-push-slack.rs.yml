@@ -106,7 +106,7 @@ jobs:
         
         # Push using skopeo with intermediate files (avoid pipe issues)
         docker save local-slack.rs:latest -o /tmp/slack.rs-latest.tar
-        skopeo copy --dest-tls-verify=false --dest-creds="$HARBOR_USERNAME:$HARBOR_PASSWORD" docker-archive:/tmp/slack.rs-latest.tar docker://$HARBOR_URL/$HARBOR_PROJECT/slack.rs:latest
+        skopeo copy --dest-tls-verify=false --dest-creds="$HARBOR_USERNAME:$HARBOR_PASSWORD" docker-archive:/tmp/slack.rs-latest.tar docker://$HARBOR_URL/$HARBOR_PROJECT/slack.rs:latestdocker save local-hitomi:${{ github.sha }} -o /tmp/hitomi-sha.tar
         
         docker save local-slack.rs:${{ github.sha }} -o /tmp/slack.rs-sha.tar
         skopeo copy --dest-tls-verify=false --dest-creds="$HARBOR_USERNAME:$HARBOR_PASSWORD" docker-archive:/tmp/slack.rs-sha.tar docker://$HARBOR_URL/$HARBOR_PROJECT/slack.rs:${{ github.sha }}
