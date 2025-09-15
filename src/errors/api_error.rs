@@ -5,6 +5,7 @@ use axum::{
 };
 use serde::Serialize;
 use thiserror::Error;
+use tracing::error;
 
 #[derive(Debug, Error)]
 pub enum ApiError {
@@ -22,11 +23,23 @@ struct ErrorResponseBody {
 impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
         match self {
-            ApiError::BadRequest(message) => {
-                let body = ErrorResponseBody { message };
+            ApiError::BadRequest(ref message) => {
+                error!(
+                    error_type = "bad_request",
+                    message = %message,
+                    status = 400,
+                    "API error occurred"
+                );
+                let body = ErrorResponseBody { message: message.clone() };
                 (StatusCode::BAD_REQUEST, Json(&body)).into_response()
             }
-            ApiError::InternalServerError(_) => {
+            ApiError::InternalServerError(ref details) => {
+                error!(
+                    error_type = "internal_server_error",
+                    details = %details,
+                    status = 500,
+                    "API error occurred"
+                );
                 let body = ErrorResponseBody {
                     message: self.to_string(),
                 };

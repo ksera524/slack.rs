@@ -1,9 +1,12 @@
 use std::net::SocketAddr;
-use tracing_subscriber::{EnvFilter, fmt, fmt::format::FmtSpan, prelude::*};
+use tracing::{error, info, info_span};
+
 mod app;
 mod config;
 mod errors;
 mod handlers;
+mod logging;
+mod middleware;
 mod routes;
 mod service;
 
@@ -11,19 +14,33 @@ mod service;
 async fn main() {
     dotenvy::dotenv().ok();
 
-    let fmt_layer = fmt::layer().json().with_span_events(FmtSpan::CLOSE);
-    let env_filter = EnvFilter::from_default_env();
-    tracing_subscriber::registry()
-        .with(fmt_layer)
-        .with(env_filter)
-        .init();
+    // ログシステムの初期化
+    let log_config = logging::LogConfig::default();
+    logging::init_tracing(log_config);
+
+    let main_span = info_span!("application", service = "slack-rs", version = env!("CARGO_PKG_VERSION"));
+    let _enter = main_span.enter();
+
+    info!(
+        service = "slack-rs",
+        version = env!("CARGO_PKG_VERSION"),
+        "Starting application"
+    );
 
     let settings = match config::settings::Settings::new() {
         Ok(s) => {
+            info!(
+                config_loaded = true,
+                "Configuration loaded successfully"
+            );
             s
         },
         Err(e) => {
-            tracing::error!(error = %e, "Failed to load settings");
+            error!(
+                error = %e,
+                config_loaded = false,
+                "Failed to load settings"
+            );
             std::process::exit(1);
         }
     };
@@ -36,41 +53,71 @@ async fn main() {
 
     let addr = SocketAddr::from(([0, 0, 0, 0], 3000));
 
-    tracing::info!("Starting server on {}", addr);
+    info!(
+        addr = %addr,
+        port = addr.port(),
+        "Starting HTTP server"
+    );
 
     let listener = match tokio::net::TcpListener::bind(addr).await {
         Ok(l) => {
             l
         },
         Err(e) => {
-            tracing::error!(error = %e, address = %addr, "Failed to bind to address");
+            error!(
+                error = %e,
+                address = %addr,
+                port = addr.port(),
+                "Failed to bind to address"
+            );
             std::process::exit(1);
         }
     };
-    
-    tracing::info!("Server bound to address, starting to serve...");
-    
+
+    info!(
+        addr = %addr,
+        "Server successfully bound to address"
+    );
+
     // ARC/DinD環境対応: Graceful shutdown with signal handling
-    let server = axum::serve(listener, app);
-    
-    
-    // Run server with timeout and signal handling
-    let shutdown_signal = async {
+    let server = axum::serve(listener, app)
+        .with_graceful_shutdown(shutdown_signal());
+
+    if let Err(e) = server.await {
+        error!(
+            error = %e,
+            "Server error occurred"
+        );
+        std::process::exit(1);
+    }
+
+    info!("Server shutdown complete");
+}
+
+async fn shutdown_signal() {
+    let ctrl_c = async {
         tokio::signal::ctrl_c()
             .await
-            .expect("failed to install CTRL+C signal handler");
+            .expect("failed to install Ctrl+C handler");
     };
-    
+
+    #[cfg(unix)]
+    let terminate = async {
+        tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
+            .expect("failed to install signal handler")
+            .recv()
+            .await;
+    };
+
+    #[cfg(not(unix))]
+    let terminate = std::future::pending::<()>();
+
     tokio::select! {
-        result = server => {
-            if let Err(e) = result {
-                tracing::error!(error = %e, "Server error");
-                std::process::exit(1);
-            }
-        }
-        _ = shutdown_signal => {
-            tracing::info!("Shutdown signal received, gracefully shutting down");
-        }
+        _ = ctrl_c => {
+            info!(signal = "SIGINT", "Received shutdown signal");
+        },
+        _ = terminate => {
+            info!(signal = "SIGTERM", "Received shutdown signal");
+        },
     }
-    
 }
