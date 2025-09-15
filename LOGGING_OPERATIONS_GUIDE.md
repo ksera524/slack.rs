@@ -5,48 +5,28 @@
 
 ## 主な機能
 
-### 1. 構造化ログ
-すべてのログは構造化され、以下の情報を含みます：
+### 1. JSONL形式の構造化ログ
+すべてのログはJSONL (JSON Lines) 形式で出力され、以下の情報を含みます：
 - リクエストID（トレーサビリティ）
 - 実行時間（パフォーマンス分析）
 - エラー詳細（問題診断）
 - コンテキスト情報（channel, file_name等）
 
-### 2. ログフォーマット
+1行に1つのJSONオブジェクトでストリーミング処理やログ解析ツールでの処理が容易です。
 
-#### JSON形式（本番環境推奨）
+### 2. JSONLログ出力
+
+JSONL (JSON Lines) 形式で固定されており、設定変更は不要です。
 ```bash
-LOG_FORMAT=json cargo run
+cargo run
 ```
-```json
-{
-  "timestamp": "2024-01-01T12:00:00.123",
-  "level": "INFO",
-  "fields": {
-    "message": "Successfully posted message to Slack",
-    "channel": "general",
-    "duration_ms": 125,
-    "request_id": "550e8400-e29b-41d4-a716-446655440000"
-  },
-  "target": "slack::handlers::slack_handler",
-  "span": {
-    "name": "post_message",
-    "channel": "general"
-  }
-}
+```jsonl
+{"timestamp":"2024-01-01T12:00:00.123","level":"INFO","message":"Successfully posted message to Slack","channel":"general","duration_ms":125,"request_id":"550e8400-e29b-41d4-a716-446655440000","target":"slack::handlers::slack_handler"}
+{"timestamp":"2024-01-01T12:00:01.456","level":"DEBUG","message":"Slack API call successful","channel":"general","target":"slack::service::slack_service"}
 ```
 
-#### Pretty形式（開発環境）
-```bash
-LOG_FORMAT=pretty cargo run
-```
-読みやすい階層表示でログを出力
+各行が独立したJSONオブジェクトで、ストリーミング処理やログ解析ツールでの処理が容易です。
 
-#### Compact形式
-```bash
-LOG_FORMAT=compact cargo run
-```
-1行で簡潔に表示
 
 ### 3. ログレベル設定
 
@@ -107,9 +87,7 @@ x-request-id: my-custom-id
 ### 本番環境
 ```bash
 # .env
-LOG_FORMAT=json
 RUST_LOG=info,slack::service=warn
-NO_COLOR=true
 LOG_TARGET=true
 LOG_LINE=false
 ```
@@ -117,9 +95,7 @@ LOG_LINE=false
 ### ステージング環境
 ```bash
 # .env
-LOG_FORMAT=json
 RUST_LOG=info,slack=debug
-NO_COLOR=false
 LOG_TARGET=true
 LOG_LINE=true
 ```
@@ -127,9 +103,7 @@ LOG_LINE=true
 ### 開発環境
 ```bash
 # .env
-LOG_FORMAT=pretty
 RUST_LOG=debug
-NO_COLOR=false
 LOG_TARGET=true
 LOG_THREAD=true
 LOG_LINE=true
@@ -139,26 +113,38 @@ LOG_LINE=true
 
 ### エラーの検索
 ```bash
-# JSON形式のログからエラーを抽出
+# JSONL形式のログからエラーを抽出
 cargo run | jq 'select(.level == "ERROR")'
+
+# jqを使ったリアルタイムフィルタリング
+cargo run | jq -c 'select(.level == "ERROR")'
 ```
 
 ### 特定チャンネルのログ
 ```bash
 # generalチャンネルへの投稿を抽出
-cargo run | jq 'select(.fields.channel == "general")'
+cargo run | jq 'select(.channel == "general")'
+
+# ストリーミング処理でリアルタイム監視
+tail -f app.log | jq 'select(.channel == "general")'
 ```
 
 ### パフォーマンス分析
 ```bash
 # 100ms以上かかったリクエストを抽出
-cargo run | jq 'select(.fields.duration_ms > 100)'
+cargo run | jq 'select(.duration_ms > 100)'
+
+# 統計情報の算出
+cargo run | jq -s 'map(select(.duration_ms)) | {avg: (map(.duration_ms) | add / length), max: (map(.duration_ms) | max)}'
 ```
 
 ### リクエストIDでの追跡
 ```bash
 # 特定のリクエストIDのログを抽出
-cargo run | jq 'select(.fields.request_id == "550e8400-e29b-41d4-a716-446655440000")'
+cargo run | jq 'select(.request_id == "550e8400-e29b-41d4-a716-446655440000")'
+
+# grepで高速検索
+cargo run | grep '"request_id":"550e8400-e29b-41d4-a716-446655440000"'
 ```
 
 ## トラブルシューティング
@@ -178,13 +164,18 @@ RUST_LOG=error,slack::service=trace cargo run
 ### パフォーマンス問題の調査
 ```bash
 # すべてのタイミング情報を表示
-RUST_LOG=debug LOG_FORMAT=json cargo run | jq '.fields | select(.duration_ms != null)'
+RUST_LOG=debug cargo run | jq 'select(.duration_ms != null)'
+
+# 遅いリクエストのリアルタイム監視
+cargo run | jq -c 'select(.duration_ms > 500) | {time: .timestamp, endpoint: .target, duration: .duration_ms}'
 ```
 
 ## ベストプラクティス
 
-1. **本番環境では必ずJSON形式を使用**
-   - ログ集約ツール（ELK Stack、Datadog等）との連携が容易
+1. **JSONL形式で固定されたログ出力**
+   - ログ集約ツール（ELK Stack、Fluentd、Datadog等）との連携が容易
+   - ストリーミング処理に最適化されている
+   - 設定変更の必要がなく、運用が簡素
 
 2. **適切なログレベルの設定**
    - 本番: `info`

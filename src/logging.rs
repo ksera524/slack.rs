@@ -16,21 +16,11 @@ impl FormatTime for LocalTime {
     }
 }
 
-/// ログ出力形式
-#[derive(Debug, Clone)]
-pub enum LogFormat {
-    Json,
-    Pretty,
-    Compact,
-}
 
 /// ログ設定
 #[derive(Debug, Clone)]
 pub struct LogConfig {
-    pub format: LogFormat,
     pub level: String,
-    pub enable_color: bool,
-    pub enable_time: bool,
     pub enable_target: bool,
     pub enable_thread: bool,
     pub enable_line_number: bool,
@@ -39,14 +29,7 @@ pub struct LogConfig {
 impl Default for LogConfig {
     fn default() -> Self {
         Self {
-            format: if std::env::var("LOG_FORMAT").unwrap_or_default() == "json" {
-                LogFormat::Json
-            } else {
-                LogFormat::Pretty
-            },
             level: std::env::var("RUST_LOG").unwrap_or_else(|_| "info".to_string()),
-            enable_color: std::env::var("NO_COLOR").is_err(),
-            enable_time: true,
             enable_target: std::env::var("LOG_TARGET").unwrap_or_default() == "true",
             enable_thread: std::env::var("LOG_THREAD").unwrap_or_default() == "true",
             enable_line_number: std::env::var("LOG_LINE").unwrap_or_default() == "true",
@@ -54,61 +37,32 @@ impl Default for LogConfig {
     }
 }
 
-/// トレーシングサブスクライバーの初期化
+/// トレーシングサブスクライバーの初期化（JSONL形式固定）
 pub fn init_tracing(config: LogConfig) {
     let env_filter = EnvFilter::try_from_default_env()
         .unwrap_or_else(|_| EnvFilter::new(&config.level));
 
-    let registry = tracing_subscriber::registry().with(env_filter);
+    let jsonl_layer = fmt::layer()
+        .json()
+        .with_current_span(false)  // Flatten span info into main object
+        .with_span_list(false)     // Don't include span list to keep each line independent
+        .with_timer(LocalTime)
+        .with_target(config.enable_target)
+        .with_thread_ids(config.enable_thread)
+        .with_thread_names(config.enable_thread)
+        .with_line_number(config.enable_line_number)
+        .with_file(config.enable_line_number)
+        .with_span_events(FmtSpan::CLOSE)  // Only log on span close to reduce noise
+        .flatten_event(true);      // Flatten fields for easier parsing
 
-    match config.format {
-        LogFormat::Json => {
-            let json_layer = fmt::layer()
-                .json()
-                .with_current_span(true)
-                .with_span_list(true)
-                .with_timer(LocalTime)
-                .with_target(config.enable_target)
-                .with_thread_ids(config.enable_thread)
-                .with_thread_names(config.enable_thread)
-                .with_line_number(config.enable_line_number)
-                .with_file(config.enable_line_number)
-                .with_span_events(FmtSpan::NEW | FmtSpan::CLOSE);
-
-            registry.with(json_layer).init();
-        }
-        LogFormat::Pretty => {
-            let fmt_layer = fmt::layer()
-                .pretty()
-                .with_timer(LocalTime)
-                .with_target(config.enable_target)
-                .with_thread_ids(config.enable_thread)
-                .with_thread_names(config.enable_thread)
-                .with_line_number(config.enable_line_number)
-                .with_file(config.enable_line_number)
-                .with_ansi(config.enable_color)
-                .with_span_events(FmtSpan::NEW | FmtSpan::CLOSE);
-
-            registry.with(fmt_layer).init();
-        }
-        LogFormat::Compact => {
-            let fmt_layer = fmt::layer()
-                .compact()
-                .with_timer(LocalTime)
-                .with_target(config.enable_target)
-                .with_thread_ids(config.enable_thread)
-                .with_thread_names(config.enable_thread)
-                .with_line_number(config.enable_line_number)
-                .with_file(config.enable_line_number)
-                .with_ansi(config.enable_color)
-                .with_span_events(FmtSpan::CLOSE);
-
-            registry.with(fmt_layer).init();
-        }
-    }
+    tracing_subscriber::registry()
+        .with(env_filter)
+        .with(jsonl_layer)
+        .init();
 }
 
 /// リクエストIDの生成
+#[allow(dead_code)]
 pub fn generate_request_id() -> String {
     Uuid::new_v4().to_string()
 }

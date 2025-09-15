@@ -86,8 +86,7 @@ pub async fn upload_file(
             file_name = %file_name,
             "Failed to get upload URL from Slack"
         );
-        return Err(Box::new(std::io::Error::new(
-            std::io::ErrorKind::Other,
+        return Err(Box::new(std::io::Error::other(
             response["error"].to_string(),
         )));
     }
@@ -169,8 +168,7 @@ pub async fn send_single_file_to_slack(
             channel = %channel,
             "Failed to complete file upload"
         );
-        Err(Box::new(std::io::Error::new(
-            std::io::ErrorKind::Other,
+        Err(Box::new(std::io::Error::other(
             response["error"].to_string(),
         )))
     }

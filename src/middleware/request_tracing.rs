@@ -1,12 +1,10 @@
 use axum::{
-    body::Body,
     extract::Request,
-    http::{HeaderMap, HeaderName, HeaderValue, StatusCode},
+    http::{HeaderName, HeaderValue},
     middleware::Next,
-    response::{IntoResponse, Response},
+    response::Response,
 };
 use std::time::Instant;
-use tower_http::request_id::RequestId;
 use tracing::{error, info, info_span, warn, Instrument};
 use uuid::Uuid;
 
@@ -177,12 +175,3 @@ pub async fn request_tracing_middleware(
     response
 }
 
-/// エラーハンドリング用のトレーシング
-pub fn trace_error<E: std::fmt::Display>(error: E, context: &str) {
-    error!(
-        target: "app::error",
-        error = %error,
-        context = %context,
-        "Error occurred"
-    );
-}
