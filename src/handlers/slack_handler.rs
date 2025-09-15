@@ -74,12 +74,22 @@ pub async fn upload_file_base64(
     State(app_state): State<AppState>,
     Json(payload): Json<SlackFileUploadRequest>,
 ) -> Result<impl IntoResponse, ApiError> {
+    let base64_size = payload.file_data_base64.len();
     debug!(
         file_name = %payload.file_name,
         channel = %payload.channel,
-        base64_size = payload.file_data_base64.len(),
+        base64_size = base64_size,
         "Processing file upload request"
     );
+
+    // 大容量ファイルの場合の処理時間警告
+    if base64_size > 50_000_000 {  // 50MB以上
+        info!(
+            file_name = %payload.file_name,
+            base64_size = base64_size,
+            "Processing large file upload (>50MB)"
+        );
+    }
 
     let start = Instant::now();
 
@@ -89,10 +99,19 @@ pub async fn upload_file_base64(
             warn!(
                 error = %e,
                 file_name = %payload.file_name,
+                base64_size = payload.file_data_base64.len(),
                 "Failed to decode base64 file data"
             );
             ApiError::BadRequest("Failed to decode base64 file data".to_string())
         })?;
+
+    let file_size = file_data.len();
+    debug!(
+        file_name = %payload.file_name,
+        file_size = file_size,
+        compression_ratio = (file_size as f64 / base64_size as f64),
+        "File decoded successfully"
+    );
 
     let response_text = slack_service::send_single_file_to_slack(
         &app_state.client,

@@ -80,6 +80,7 @@ async fn main() {
     );
 
     // ARC/DinD環境対応: Graceful shutdown with signal handling
+    // Hyperのボディサイズ制限も解除
     let server = axum::serve(listener, app)
         .with_graceful_shutdown(shutdown_signal());
 
