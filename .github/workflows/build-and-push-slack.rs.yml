@@ -75,13 +75,15 @@ jobs:
         echo "$HARBOR_PASSWORD" | docker login "harbor.qroksera.com" -u "$HARBOR_USERNAME" --password-stdin
         
         # Tag images
+        echo "Tagging images..."
         docker tag slack.rs:latest harbor.qroksera.com/$HARBOR_PROJECT/slack.rs:latest
-        docker tag slack.rs:${{ github.sha }} harbor.qroksera.com /$HARBOR_PROJECT/slack.rs:${{ github.sha }}
+        docker tag slack.rs:${{ github.sha }} harbor.qroksera.com/$HARBOR_PROJECT/slack.rs:${{ github.sha }}
         
         # Push images
         echo "Pushing images to Harbor..."
         docker push harbor.qroksera.com/$HARBOR_PROJECT/slack.rs:latest
         docker push harbor.qroksera.com/$HARBOR_PROJECT/slack.rs:${{ github.sha }}
+        
         
         echo "✅ Docker push succeeded"
         
