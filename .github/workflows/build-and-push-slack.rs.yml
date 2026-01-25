@@ -60,14 +60,15 @@ jobs:
         HARBOR_PASSWORD=$(cat /tmp/harbor_password)
         HARBOR_URL=$(cat /tmp/harbor_url)
         HARBOR_PROJECT=$(cat /tmp/harbor_project)
+        HARBOR_URL="harbor.internal.qroksera.com"
         
         # Build Docker images
         echo "Building Docker images..."
         docker build -t $HARBOR_URL/$HARBOR_PROJECT/slack.rs:latest .
         docker build -t $HARBOR_URL/$HARBOR_PROJECT/slack.rs:${{ github.sha }} .
 
-        # /etc/hostsにharbor.localとharbor.qroksera.comを追加
-        echo "192.168.122.100 harbor.local harbor.qroksera.com" | sudo tee -a /etc/hosts
+        # /etc/hostsにharbor.internal.qroksera.comを追加
+        echo "192.168.122.100 harbor.internal.qroksera.com" | sudo tee -a /etc/hosts
 
         # Harborにログイン
         echo "Logging in to Harbor..."
