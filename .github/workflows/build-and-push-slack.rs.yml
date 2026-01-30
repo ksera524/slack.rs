@@ -8,6 +8,10 @@ on:
     branches: [ main, master ]
   pull_request:
     branches: [ main, master ]
+    
+permissions:
+  contents: write  # タグの作成とpushに必要
+  pull-requests: read
 
 jobs:
   build-and-push:
