@@ -8,7 +8,7 @@ on:
     branches: [ main, master ]
   pull_request:
     branches: [ main, master ]
-    
+
 permissions:
   contents: write  # タグの作成とpushに必要
   pull-requests: read
@@ -44,7 +44,7 @@ jobs:
           echo "should_tag=false" >> $GITHUB_OUTPUT
           echo "🔍 PR Build: $VERSION (build only, no push)"
         else
-          # mainへのpush時は自動的にパッチバージョンをインクリメント
+          # main/masterへのpush時は自動的にパッチバージョンをインクリメント
           PATCH=$((PATCH + 1))
           NEW_VERSION="$MAJOR.$MINOR.$PATCH"
           
@@ -115,7 +115,6 @@ jobs:
         echo "Building Docker image with version: $VERSION"
         docker build -t $HARBOR_URL/$HARBOR_PROJECT/slack.rs:$VERSION .
         docker build -t $HARBOR_URL/$HARBOR_PROJECT/slack.rs:${{ github.sha }} .
-        docker tag $HARBOR_URL/$HARBOR_PROJECT/slack.rs:$VERSION $HARBOR_URL/$HARBOR_PROJECT/slack.rs:latest
 
         # pushするかどうかの判定（PR時はpushしない）
         if [ "$SHOULD_PUSH" == "false" ]; then
@@ -134,11 +133,10 @@ jobs:
         echo "Pushing to Harbor..."
         docker push $HARBOR_URL/$HARBOR_PROJECT/slack.rs:$VERSION
         docker push $HARBOR_URL/$HARBOR_PROJECT/slack.rs:${{ github.sha }}
-        docker push $HARBOR_URL/$HARBOR_PROJECT/slack.rs:latest
         
         echo "✅ Images pushed successfully to Harbor"
-        echo "📦 Pushed tags: $VERSION, ${{ github.sha }}, latest"
-
+        echo "📦 Pushed tags: $VERSION, ${{ github.sha }}"
+        
     - name: Create and push git tag
       if: steps.version.outputs.should_tag == 'true'
       run: |
