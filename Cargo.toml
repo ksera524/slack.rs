@@ -2,6 +2,7 @@
 name = "slack"
 version = "0.1.0"
 edition = "2024"
+default-run = "slack"
 
 # ARCとQEMU環境互換性のためのターゲット設定
 [profile.release]

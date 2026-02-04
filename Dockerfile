@@ -14,7 +14,7 @@ COPY Cargo.toml Cargo.lock ./
 # Create a dummy main.rs to build dependencies
 RUN mkdir -p src && \
     echo "fn main() {}" > src/main.rs && \
-    cargo build --release && \
+    cargo build --release --bin slack && \
     rm -rf src
 
 # Copy the actual source code
@@ -26,7 +26,7 @@ ENV RUSTFLAGS=${RUSTFLAGS}
 
 # Build the application with CPU compatibility
 RUN echo "Building with RUSTFLAGS: $RUSTFLAGS" && \
-    cargo build --release
+    cargo build --release --bin slack
 
 # Runtime stage
 FROM debian:bookworm-slim

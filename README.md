@@ -4,6 +4,8 @@ Slack APIへの投稿・ファイルアップロードを提供するRust製API�
 
 ## API
 
+- `GET /health`
+  - body: なし
 - `POST /slack/message`
   - body: `{ "channel": "C123", "text": "hello" }`
 - `POST /slack/upload_base64`
