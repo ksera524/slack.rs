@@ -27,9 +27,9 @@ cargo run --bin slack
 MockのSlack APIを起動してテストします。外部Slackへの通信は行いません。
 
 ```bash
-cargo run --bin api_tests -- test
+cargo run --bin api_tests --features api-tests -- test
 ```
 
 ## CI
 
-GitHub Actionsで `cargo run --bin api_tests -- test` を実行します。
+GitHub Actionsで `cargo run --bin api_tests --features api-tests -- test` を実行します。
