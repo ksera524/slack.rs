@@ -8,10 +8,11 @@ use tracing::{debug, error, info, instrument, warn};
 pub async fn post_message(
     client: &Client,
     slack_bot_token: &str,
+    slack_api_base_url: &str,
     channel: &str,
     text: &str,
 ) -> Result<String, Error> {
-    let url = "https://slack.com/api/chat.postMessage";
+    let url = format!("{}/chat.postMessage", slack_api_base_url);
 
     let payload = json!({
         "channel": channel,
@@ -53,10 +54,11 @@ pub async fn post_message(
 pub async fn upload_file(
     client: &Client,
     slack_bot_token: &str,
+    slack_api_base_url: &str,
     file_name: &str,
     file_data: &[u8],
 ) -> Result<(String, String), Box<dyn StdError>> {
-    let url = "https://slack.com/api/files.getUploadURLExternal";
+    let url = format!("{}/files.getUploadURLExternal", slack_api_base_url);
     let params = [
         ("filename", file_name),
         ("length", &file_data.len().to_string()),
@@ -118,13 +120,15 @@ pub async fn upload_file(
 pub async fn send_single_file_to_slack(
     client: &Client,
     token: &str,
+    slack_api_base_url: &str,
     file_data: &[u8],
     file_name: &str,
     channel: &str,
 ) -> Result<String, Box<dyn StdError>> {
-    let (file_id, _upload_url) = upload_file(client, token, file_name, file_data).await?;
+    let (file_id, _upload_url) =
+        upload_file(client, token, slack_api_base_url, file_name, file_data).await?;
 
-    let url = "https://slack.com/api/files.completeUploadExternal";
+    let url = format!("{}/files.completeUploadExternal", slack_api_base_url);
 
     let data = serde_json::json!({
         "files": [{
