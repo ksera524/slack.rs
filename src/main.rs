@@ -1,14 +1,6 @@
 use std::net::SocketAddr;
+use slack::{app, config, logging};
 use tracing::{error, info, info_span};
-
-mod app;
-mod config;
-mod errors;
-mod handlers;
-mod logging;
-mod middleware;
-mod routes;
-mod service;
 
 #[tokio::main(flavor = "multi_thread", worker_threads = 2)]
 async fn main() {

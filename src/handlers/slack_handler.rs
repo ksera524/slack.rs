@@ -41,6 +41,7 @@ pub async fn post_message(
     let response_text = slack_service::post_message(
         &app_state.client,
         &app_state.settings.slack_bot_token,
+        &app_state.settings.slack_api_base_url,
         &payload.channel,
         &payload.text,
     )
@@ -116,6 +117,7 @@ pub async fn upload_file_base64(
     let response_text = slack_service::send_single_file_to_slack(
         &app_state.client,
         &app_state.settings.slack_bot_token,
+        &app_state.settings.slack_api_base_url,
         &file_data,
         &payload.file_name,
         &payload.channel,
