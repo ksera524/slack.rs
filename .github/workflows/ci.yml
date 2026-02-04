@@ -7,7 +7,7 @@ on:
   pull_request:
 
 jobs:
-  test:
+  api-tests:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -20,4 +20,13 @@ jobs:
         uses: Swatinem/rust-cache@v2
 
       - name: Run tanu API tests
-        run: cargo run --bin api_tests -- test
+        run: cargo run --bin api_tests --features api-tests -- test
+
+  docker-build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build Docker image
+        run: docker build -t slack-rs:ci .
