@@ -1,5 +1,5 @@
 use reqwest::header::CONTENT_TYPE;
-use reqwest::{Client, Error};
+use reqwest::Client;
 use serde_json::{Value, json};
 use std::error::Error as StdError;
 use tracing::{debug, error, info, instrument, warn};
@@ -11,7 +11,7 @@ pub async fn post_message(
     slack_api_base_url: &str,
     channel: &str,
     text: &str,
-) -> Result<String, Error> {
+) -> Result<String, Box<dyn StdError>> {
     let url = format!("{}/chat.postMessage", slack_api_base_url);
 
     let payload = json!({
@@ -35,11 +35,16 @@ pub async fn post_message(
         .await?;
 
     if !response["ok"].as_bool().unwrap_or(false) {
+        let error_message = response["error"]
+            .as_str()
+            .unwrap_or("unknown_error")
+            .to_string();
         warn!(
-            error = %response["error"],
+            error = %error_message,
             channel = %channel,
             "Slack API returned error response"
         );
+        return Err(Box::new(std::io::Error::other(error_message)));
     } else {
         debug!(
             channel = %channel,
@@ -93,8 +98,14 @@ pub async fn upload_file(
         )));
     }
 
-    let upload_url = response["upload_url"].as_str().unwrap().to_string();
-    let file_id = response["file_id"].as_str().unwrap().to_string();
+    let upload_url = response["upload_url"]
+        .as_str()
+        .ok_or_else(|| std::io::Error::other("missing upload_url"))?
+        .to_string();
+    let file_id = response["file_id"]
+        .as_str()
+        .ok_or_else(|| std::io::Error::other("missing file_id"))?
+        .to_string();
 
     debug!(
         file_id = %file_id,
