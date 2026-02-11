@@ -11,6 +11,19 @@ Slack APIへの投稿・ファイルアップロードを提供するRust製API�
 - `POST /slack/upload_base64`
   - body: `{ "file_name": "hello.txt", "file_data_base64": "...", "channel": "C123" }`
 
+## Error response (RFC9457)
+
+エラーレスポンスは `application/problem+json` の最小セットで返します。
+
+```json
+{
+  "type": "about:blank",
+  "title": "Bad Request",
+  "status": 400,
+  "detail": "Failed to decode base64 file data"
+}
+```
+
 ## 環境変数
 
 - `SLACK_BOT_TOKEN` (必須)

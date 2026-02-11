@@ -76,9 +76,12 @@ async fn upload_base64_invalid() -> eyre::Result<()> {
     check_eq!(400, response.status().as_u16());
 
     let body = response.json::<Value>().await?;
+    check_eq!("about:blank", body["type"].as_str().unwrap_or(""));
+    check_eq!("Bad Request", body["title"].as_str().unwrap_or(""));
+    check_eq!(400, body["status"].as_i64().unwrap_or_default());
     check_eq!(
         "Failed to decode base64 file data",
-        body["message"].as_str().unwrap_or("")
+        body["detail"].as_str().unwrap_or("")
     );
 
     app.shutdown();

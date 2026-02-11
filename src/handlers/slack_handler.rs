@@ -6,7 +6,12 @@ use std::time::Instant;
 
 use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
 
-use crate::{config::state::AppState, errors::api_error::ApiError, service::slack_service};
+use crate::{
+    config::state::AppState,
+    errors::api_error::ApiError,
+    extractors::AppJson,
+    service::slack_service,
+};
 
 #[derive(Deserialize)]
 pub struct SlackMessageRequest {
@@ -28,7 +33,7 @@ pub struct SlackFileUploadRequest {
 ))]
 pub async fn post_message(
     State(app_state): State<AppState>,
-    Json(payload): Json<SlackMessageRequest>,
+    AppJson(payload): AppJson<SlackMessageRequest>,
 ) -> Result<Json<String>, ApiError> {
     debug!(
         channel = %payload.channel,
@@ -73,7 +78,7 @@ pub async fn post_message(
 ))]
 pub async fn upload_file_base64(
     State(app_state): State<AppState>,
-    Json(payload): Json<SlackFileUploadRequest>,
+    AppJson(payload): AppJson<SlackFileUploadRequest>,
 ) -> Result<impl IntoResponse, ApiError> {
     let base64_size = payload.file_data_base64.len();
     debug!(
