@@ -1,7 +1,7 @@
 use axum::{
-    Json,
-    http::StatusCode,
+    http::{header::CONTENT_TYPE, HeaderValue, StatusCode},
     response::{IntoResponse, Response},
+    Json,
 };
 use serde::Serialize;
 use thiserror::Error;
@@ -16,8 +16,35 @@ pub enum ApiError {
 }
 
 #[derive(Serialize)]
-struct ErrorResponseBody {
-    message: String,
+struct ProblemDetails {
+    #[serde(rename = "type")]
+    type_url: String,
+    title: String,
+    status: u16,
+    detail: String,
+}
+
+fn problem_details(status: StatusCode, detail: impl Into<String>) -> ProblemDetails {
+    let title = status
+        .canonical_reason()
+        .unwrap_or("Unknown Error")
+        .to_string();
+    ProblemDetails {
+        type_url: "about:blank".to_string(),
+        title,
+        status: status.as_u16(),
+        detail: detail.into(),
+    }
+}
+
+pub fn problem_details_response(status: StatusCode, detail: impl Into<String>) -> Response {
+    let body = problem_details(status, detail);
+    let mut response = (status, Json(body)).into_response();
+    response.headers_mut().insert(
+        CONTENT_TYPE,
+        HeaderValue::from_static("application/problem+json"),
+    );
+    response
 }
 
 impl IntoResponse for ApiError {
@@ -30,8 +57,7 @@ impl IntoResponse for ApiError {
                     status = 400,
                     "API error occurred"
                 );
-                let body = ErrorResponseBody { message: message.clone() };
-                (StatusCode::BAD_REQUEST, Json(&body)).into_response()
+                problem_details_response(StatusCode::BAD_REQUEST, message.clone())
             }
             ApiError::InternalServerError(ref details) => {
                 error!(
@@ -40,10 +66,7 @@ impl IntoResponse for ApiError {
                     status = 500,
                     "API error occurred"
                 );
-                let body = ErrorResponseBody {
-                    message: self.to_string(),
-                };
-                (StatusCode::INTERNAL_SERVER_ERROR, Json(&body)).into_response()
+                problem_details_response(StatusCode::INTERNAL_SERVER_ERROR, "Internal Server Error")
             }
         }
     }
