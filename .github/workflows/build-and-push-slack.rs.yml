@@ -5,7 +5,8 @@ name: Build and Push to Harbor - slack.rs
 
 on:
   push:
-    branches: [ main, master ]
+    tags:
+      - 'v*.*.*'
   pull_request:
     branches: [ main, master ]
 
@@ -92,14 +93,20 @@ jobs:
 
     - name: Tag and push images using Docker
       run: |
-        echo "=== Tag and push image on self-hosted runner ==="
+        echo "=== Tag and push image on self-hosted runner (semver) ==="
 
         HARBOR_USERNAME=$(cat /tmp/harbor_username)
         HARBOR_PASSWORD=$(cat /tmp/harbor_password)
         HARBOR_URL="harbor.internal.qroksera.com"
         HARBOR_PROJECT=$(cat /tmp/harbor_project)
         IMAGE_SHA_TAG="${{ github.sha }}"
-        IMAGE_LATEST_TAG="latest"
+        RAW_REF_NAME="${{ github.ref_name }}"
+
+        if [[ ! "$RAW_REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+          echo "❌ semverタグ形式ではありません: $RAW_REF_NAME"
+          exit 1
+        fi
+        IMAGE_SEMVER_TAG="${RAW_REF_NAME#v}"
 
         # 内部CAを信頼ストアに追加
         echo "Installing internal CA..."
@@ -112,7 +119,7 @@ jobs:
         sudo cp /tmp/harbor_ca.crt /etc/docker/certs.d/harbor.internal.qroksera.com/ca.crt
 
         # Load済みのローカルimageをHarborタグに付け替える
-        docker tag slack.rs:ci $HARBOR_URL/$HARBOR_PROJECT/slack.rs:$IMAGE_LATEST_TAG
+        docker tag slack.rs:ci $HARBOR_URL/$HARBOR_PROJECT/slack.rs:$IMAGE_SEMVER_TAG
         docker tag slack.rs:ci $HARBOR_URL/$HARBOR_PROJECT/slack.rs:$IMAGE_SHA_TAG
 
         # /etc/hostsにharbor.internal.qroksera.comを追加
@@ -124,11 +131,11 @@ jobs:
 
         # Harborへpush
         echo "Pushing to Harbor..."
-        docker push $HARBOR_URL/$HARBOR_PROJECT/slack.rs:$IMAGE_LATEST_TAG
+        docker push $HARBOR_URL/$HARBOR_PROJECT/slack.rs:$IMAGE_SEMVER_TAG
         docker push $HARBOR_URL/$HARBOR_PROJECT/slack.rs:$IMAGE_SHA_TAG
 
         echo "✅ Images pushed successfully to Harbor"
-        echo "📦 Pushed tags: $IMAGE_LATEST_TAG, $IMAGE_SHA_TAG"
+        echo "📦 Pushed tags: $IMAGE_SEMVER_TAG, $IMAGE_SHA_TAG"
 
     - name: Cleanup
       if: always()
