@@ -81,6 +81,27 @@ async fn post_message_ok() -> eyre::Result<()> {
 }
 
 #[tanu::test]
+async fn openapi_json_ok() -> eyre::Result<()> {
+    let mock_slack = support::start_mock_slack().await?;
+    let app = support::start_app(mock_slack.base_url.clone()).await?;
+
+    let client = Client::new();
+    let response = client
+        .get(format!("{}/openapi.json", app.base_url))
+        .send()
+        .await?;
+
+    check_eq!(200, response.status().as_u16());
+
+    let body = response.text().await?;
+    check_eq!("3.0.3", get_str(&body, "openapi"));
+
+    app.shutdown();
+    mock_slack.shutdown();
+    Ok(())
+}
+
+#[tanu::test]
 async fn upload_image_ok() -> eyre::Result<()> {
     let mock_slack = support::start_mock_slack().await?;
     let app = support::start_app(mock_slack.base_url.clone()).await?;
