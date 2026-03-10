@@ -45,6 +45,9 @@ jobs:
     runs-on: slack-rs-runners
 
     steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
     - name: Download image artifact
       uses: actions/download-artifact@v4
       with:
