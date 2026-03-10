@@ -103,17 +103,28 @@ jobs:
         IMAGE_SHA_TAG="${{ github.sha }}"
         RAW_REF_NAME="${{ github.ref_name }}"
         RAW_REF="${{ github.ref }}"
+        APP_VERSION=$(grep -m1 '^version = "' Cargo.toml | cut -d '"' -f 2)
+
+        if [[ ! "$APP_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+          echo "❌ Cargo.toml version is not semver x.y.z: $APP_VERSION"
+          exit 1
+        fi
 
         if [[ "$RAW_REF" == refs/tags/* ]]; then
           if [[ ! "$RAW_REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
             echo "❌ semverタグ形式ではありません: $RAW_REF_NAME"
             exit 1
           fi
-          IMAGE_PRIMARY_TAG="${RAW_REF_NAME#v}"
-          echo "Detected tag push. primary tag=$IMAGE_PRIMARY_TAG"
+          TAG_VERSION="${RAW_REF_NAME#v}"
+          if [[ "$TAG_VERSION" != "$APP_VERSION" ]]; then
+            echo "❌ Tag version ($TAG_VERSION) does not match Cargo.toml version ($APP_VERSION)"
+            exit 1
+          fi
+          IMAGE_PRIMARY_TAG="$APP_VERSION"
+          echo "Detected tag push. semver tag=$IMAGE_PRIMARY_TAG"
         elif [[ "$RAW_REF" == "refs/heads/main" ]]; then
-          IMAGE_PRIMARY_TAG="latest"
-          echo "Detected main push. primary tag=$IMAGE_PRIMARY_TAG"
+          IMAGE_PRIMARY_TAG="$APP_VERSION"
+          echo "Detected main push. semver tag=$IMAGE_PRIMARY_TAG"
         else
           echo "Skipping push: unsupported ref $RAW_REF"
           exit 0
