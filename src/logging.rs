@@ -4,7 +4,8 @@ use tracing_subscriber::{
     layer::SubscriberExt,
     util::SubscriberInitExt,
 };
-use uuid::Uuid;
+
+use crate::request_id;
 
 /// ログ設定
 #[derive(Debug, Clone)]
@@ -53,7 +54,7 @@ pub fn init_tracing(config: LogConfig) {
 /// リクエストIDの生成
 #[allow(dead_code)]
 pub fn generate_request_id() -> String {
-    Uuid::new_v4().to_string()
+    request_id::generate_request_id()
 }
 
 /// 構造化ログ用のマクロ

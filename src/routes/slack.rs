@@ -2,7 +2,7 @@ use crate::{
     config::state::AppState,
     handlers::slack_handler::{post_message, upload_file_base64},
 };
-use axum::{routing::post, Router};
+use axum::{Router, routing::post};
 
 pub fn create_slack_routes() -> Router<AppState> {
     Router::new()

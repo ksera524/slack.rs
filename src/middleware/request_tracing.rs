@@ -5,24 +5,22 @@ use axum::{
     response::Response,
 };
 use std::time::Instant;
-use tracing::{error, info, info_span, warn, Instrument};
-use uuid::Uuid;
+use tracing::{Instrument, error, info, info_span, warn};
+
+use crate::request_id;
 
 /// リクエストIDヘッダー名
 pub const REQUEST_ID_HEADER: &str = "x-request-id";
 
 /// リクエストトレーシングミドルウェア
-pub async fn request_tracing_middleware(
-    request: Request,
-    next: Next,
-) -> Response {
+pub async fn request_tracing_middleware(request: Request, next: Next) -> Response {
     // リクエストIDの取得または生成
     let request_id = request
         .headers()
         .get(REQUEST_ID_HEADER)
         .and_then(|v| v.to_str().ok())
         .map(String::from)
-        .unwrap_or_else(|| Uuid::new_v4().to_string());
+        .unwrap_or_else(request_id::generate_request_id);
 
     let method = request.method().clone();
     let uri = request.uri().clone();
@@ -174,4 +172,3 @@ pub async fn request_tracing_middleware(
 
     response
 }
-

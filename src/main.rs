@@ -1,16 +1,18 @@
-use std::net::SocketAddr;
 use slack::{app, config, logging};
+use std::net::SocketAddr;
 use tracing::{error, info, info_span};
 
 #[tokio::main(flavor = "multi_thread", worker_threads = 2)]
 async fn main() {
-    dotenvy::dotenv().ok();
-
     // ログシステムの初期化
     let log_config = logging::LogConfig::default();
     logging::init_tracing(log_config);
 
-    let main_span = info_span!("application", service = "slack-rs", version = env!("CARGO_PKG_VERSION"));
+    let main_span = info_span!(
+        "application",
+        service = "slack-rs",
+        version = env!("CARGO_PKG_VERSION")
+    );
     let _enter = main_span.enter();
 
     info!(
@@ -21,12 +23,9 @@ async fn main() {
 
     let settings = match config::settings::Settings::new() {
         Ok(s) => {
-            info!(
-                config_loaded = true,
-                "Configuration loaded successfully"
-            );
+            info!(config_loaded = true, "Configuration loaded successfully");
             s
-        },
+        }
         Err(e) => {
             error!(
                 error = %e,
@@ -52,9 +51,7 @@ async fn main() {
     );
 
     let listener = match tokio::net::TcpListener::bind(addr).await {
-        Ok(l) => {
-            l
-        },
+        Ok(l) => l,
         Err(e) => {
             error!(
                 error = %e,
@@ -73,8 +70,7 @@ async fn main() {
 
     // ARC/DinD環境対応: Graceful shutdown with signal handling
     // Hyperのボディサイズ制限も解除
-    let server = axum::serve(listener, app)
-        .with_graceful_shutdown(shutdown_signal());
+    let server = axum::serve(listener, app).with_graceful_shutdown(shutdown_signal());
 
     if let Err(e) = server.await {
         error!(

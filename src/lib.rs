@@ -1,9 +1,9 @@
 pub mod app;
 pub mod config;
 pub mod errors;
-pub mod extractors;
 pub mod handlers;
 pub mod logging;
 pub mod middleware;
+pub mod request_id;
 pub mod routes;
 pub mod service;

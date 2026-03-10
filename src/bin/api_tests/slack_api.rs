@@ -1,7 +1,61 @@
-use serde_json::{Value, json};
 use tanu::{check, check_eq, eyre, http::Client};
 
 use crate::support;
+
+fn json_body_with<K, V>(pairs: &[(K, V)]) -> String
+where
+    K: AsRef<str>,
+    V: AsRef<str>,
+{
+    nojson::json(|f| {
+        f.object(|f| {
+            for (key, value) in pairs {
+                f.member(key.as_ref(), value.as_ref())?;
+            }
+            Ok(())
+        })
+    })
+    .to_string()
+}
+
+fn get_bool(body: &str, key: &str) -> bool {
+    nojson::RawJson::parse(body)
+        .ok()
+        .and_then(|json| {
+            json.value()
+                .to_member(key)
+                .ok()
+                .and_then(|member| member.optional())
+                .and_then(|value| bool::try_from(value).ok())
+        })
+        .unwrap_or(false)
+}
+
+fn get_str(body: &str, key: &str) -> String {
+    nojson::RawJson::parse(body)
+        .ok()
+        .and_then(|json| {
+            json.value()
+                .to_member(key)
+                .ok()
+                .and_then(|member| member.optional())
+                .and_then(|value| String::try_from(value).ok())
+        })
+        .unwrap_or_default()
+}
+
+fn get_i64(body: &str, key: &str) -> i64 {
+    nojson::RawJson::parse(body)
+        .ok()
+        .and_then(|json| {
+            json.value()
+                .to_member(key)
+                .ok()
+                .and_then(|member| member.optional())
+                .and_then(|value| i64::try_from(value).ok())
+        })
+        .unwrap_or_default()
+}
 
 #[tanu::test]
 async fn post_message_ok() -> eyre::Result<()> {
@@ -11,18 +65,15 @@ async fn post_message_ok() -> eyre::Result<()> {
     let client = Client::new();
     let response = client
         .post(format!("{}/slack/message", app.base_url))
-        .json(&json!({
-            "channel": "C123456",
-            "text": "hello"
-        }))
+        .header("content-type", "application/json")
+        .body(json_body_with(&[("channel", "C123456"), ("text", "hello")]))
         .send()
         .await?;
 
     check_eq!(200, response.status().as_u16());
 
     let body = response.json::<String>().await?;
-    let slack_response: Value = serde_json::from_str(&body)?;
-    check!(slack_response["ok"].as_bool().unwrap_or(false));
+    check!(get_bool(&body, "ok"));
 
     app.shutdown();
     mock_slack.shutdown();
@@ -38,19 +89,24 @@ async fn upload_base64_ok() -> eyre::Result<()> {
     let file_data = support::encode_base64(b"hello");
     let response = client
         .post(format!("{}/slack/upload_base64", app.base_url))
-        .json(&json!({
-            "file_name": "hello.txt",
-            "file_data_base64": file_data,
-            "channel": "C123456"
-        }))
+        .header("content-type", "application/json")
+        .body(
+            nojson::json(|f| {
+                f.object(|f| {
+                    f.member("file_name", "hello.txt")?;
+                    f.member("file_data_base64", &file_data)?;
+                    f.member("channel", "C123456")
+                })
+            })
+            .to_string(),
+        )
         .send()
         .await?;
 
     check_eq!(200, response.status().as_u16());
 
     let body = response.json::<String>().await?;
-    let slack_response: Value = serde_json::from_str(&body)?;
-    check!(slack_response["ok"].as_bool().unwrap_or(false));
+    check!(get_bool(&body, "ok"));
 
     app.shutdown();
     mock_slack.shutdown();
@@ -65,23 +121,29 @@ async fn upload_base64_invalid() -> eyre::Result<()> {
     let client = Client::new();
     let response = client
         .post(format!("{}/slack/upload_base64", app.base_url))
-        .json(&json!({
-            "file_name": "bad.txt",
-            "file_data_base64": "not_base64",
-            "channel": "C123456"
-        }))
+        .header("content-type", "application/json")
+        .body(
+            nojson::json(|f| {
+                f.object(|f| {
+                    f.member("file_name", "bad.txt")?;
+                    f.member("file_data_base64", "not_base64")?;
+                    f.member("channel", "C123456")
+                })
+            })
+            .to_string(),
+        )
         .send()
         .await?;
 
     check_eq!(400, response.status().as_u16());
 
-    let body = response.json::<Value>().await?;
-    check_eq!("about:blank", body["type"].as_str().unwrap_or(""));
-    check_eq!("Bad Request", body["title"].as_str().unwrap_or(""));
-    check_eq!(400, body["status"].as_i64().unwrap_or_default());
+    let body = response.text().await?;
+    check_eq!("about:blank", get_str(&body, "type"));
+    check_eq!("Bad Request", get_str(&body, "title"));
+    check_eq!(400, get_i64(&body, "status"));
     check_eq!(
         "Failed to decode base64 file data",
-        body["detail"].as_str().unwrap_or("")
+        get_str(&body, "detail")
     );
 
     app.shutdown();

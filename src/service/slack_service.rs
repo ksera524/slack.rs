@@ -1,8 +1,38 @@
-use reqwest::header::CONTENT_TYPE;
 use reqwest::Client;
-use serde_json::{Value, json};
+use reqwest::header::CONTENT_TYPE;
 use std::error::Error as StdError;
 use tracing::{debug, error, info, instrument, warn};
+
+fn get_required_string(
+    root: nojson::RawJsonValue<'_, '_>,
+    name: &str,
+) -> Result<String, Box<dyn StdError>> {
+    let value = root
+        .to_member(name)
+        .map_err(Box::<dyn StdError>::from)?
+        .required()
+        .map_err(Box::<dyn StdError>::from)?;
+    let converted = String::try_from(value).map_err(Box::<dyn StdError>::from)?;
+    Ok(converted)
+}
+
+fn get_required_bool(
+    root: nojson::RawJsonValue<'_, '_>,
+    name: &str,
+) -> Result<bool, Box<dyn StdError>> {
+    let value = root
+        .to_member(name)
+        .map_err(Box::<dyn StdError>::from)?
+        .required()
+        .map_err(Box::<dyn StdError>::from)?;
+    let converted = bool::try_from(value).map_err(Box::<dyn StdError>::from)?;
+    Ok(converted)
+}
+
+fn get_optional_string(root: nojson::RawJsonValue<'_, '_>, name: &str) -> Option<String> {
+    let value = root.to_member(name).ok()?.optional()?;
+    String::try_from(value).ok()
+}
 
 #[instrument(skip(client, slack_bot_token, text), fields(channel = %channel))]
 pub async fn post_message(
@@ -14,9 +44,11 @@ pub async fn post_message(
 ) -> Result<String, Box<dyn StdError>> {
     let url = format!("{}/chat.postMessage", slack_api_base_url);
 
-    let payload = json!({
-        "channel": channel,
-        "text": text,
+    let payload = nojson::json(|f| {
+        f.object(|f| {
+            f.member("channel", channel)?;
+            f.member("text", text)
+        })
     });
 
     debug!(
@@ -28,31 +60,34 @@ pub async fn post_message(
     let response = client
         .post(url)
         .bearer_auth(slack_bot_token)
-        .json(&payload)
+        .header(CONTENT_TYPE, "application/json")
+        .body(payload.to_string())
         .send()
         .await?
-        .json::<Value>()
+        .text()
         .await?;
 
-    if !response["ok"].as_bool().unwrap_or(false) {
-        let error_message = response["error"]
-            .as_str()
-            .unwrap_or("unknown_error")
-            .to_string();
+    let parsed = nojson::RawJson::parse(&response)?;
+    let root = parsed.value();
+    let ok = get_required_bool(root, "ok")?;
+
+    if !ok {
+        let error_message =
+            get_optional_string(root, "error").unwrap_or_else(|| "unknown_error".to_string());
         warn!(
             error = %error_message,
             channel = %channel,
             "Slack API returned error response"
         );
         return Err(Box::new(std::io::Error::other(error_message)));
-    } else {
-        debug!(
-            channel = %channel,
-            "Slack API call successful"
-        );
     }
 
-    Ok(response.to_string())
+    debug!(
+        channel = %channel,
+        "Slack API call successful"
+    );
+
+    Ok(response)
 }
 
 #[instrument(skip(client, slack_bot_token, file_data), fields(file_name = %file_name, file_size = file_data.len()))]
@@ -85,27 +120,23 @@ pub async fn upload_file(
         .text()
         .await?;
 
-    let response: Value = serde_json::from_str(&response)?;
+    let parsed = nojson::RawJson::parse(&response)?;
+    let root = parsed.value();
+    let ok = get_required_bool(root, "ok")?;
 
-    if !response["ok"].as_bool().unwrap_or(false) {
+    if !ok {
+        let error_message =
+            get_optional_string(root, "error").unwrap_or_else(|| "unknown_error".to_string());
         error!(
-            error = %response["error"],
+            error = %error_message,
             file_name = %file_name,
             "Failed to get upload URL from Slack"
         );
-        return Err(Box::new(std::io::Error::other(
-            response["error"].to_string(),
-        )));
+        return Err(Box::new(std::io::Error::other(error_message)));
     }
 
-    let upload_url = response["upload_url"]
-        .as_str()
-        .ok_or_else(|| std::io::Error::other("missing upload_url"))?
-        .to_string();
-    let file_id = response["file_id"]
-        .as_str()
-        .ok_or_else(|| std::io::Error::other("missing file_id"))?
-        .to_string();
+    let upload_url = get_required_string(root, "upload_url")?;
+    let file_id = get_required_string(root, "file_id")?;
 
     debug!(
         file_id = %file_id,
@@ -141,12 +172,19 @@ pub async fn send_single_file_to_slack(
 
     let url = format!("{}/files.completeUploadExternal", slack_api_base_url);
 
-    let data = serde_json::json!({
-        "files": [{
-            "id": file_id,
-            "title": file_name,
-        }],
-        "channel_id": channel,
+    let data = nojson::json(|f| {
+        f.object(|f| {
+            f.member(
+                "files",
+                nojson::array(|f| {
+                    f.element(nojson::object(|f| {
+                        f.member("id", &file_id)?;
+                        f.member("title", file_name)
+                    }))
+                }),
+            )?;
+            f.member("channel_id", channel)
+        })
     });
 
     debug!(
@@ -160,15 +198,17 @@ pub async fn send_single_file_to_slack(
         .post(url)
         .bearer_auth(token)
         .header(CONTENT_TYPE, "application/json")
-        .body(serde_json::to_string(&data)?)
+        .body(data.to_string())
         .send()
         .await?
         .text()
         .await?;
 
-    let response: Value = serde_json::from_str(&response_text)?;
+    let parsed = nojson::RawJson::parse(&response_text)?;
+    let root = parsed.value();
+    let ok = get_required_bool(root, "ok")?;
 
-    if response["ok"].as_bool().unwrap_or(false) {
+    if ok {
         info!(
             file_id = %file_id,
             file_name = %file_name,
@@ -178,13 +218,13 @@ pub async fn send_single_file_to_slack(
         Ok(response_text)
     } else {
         error!(
-            error = %response["error"],
+            error = %get_optional_string(root, "error").unwrap_or_else(|| "unknown_error".to_string()),
             file_id = %file_id,
             channel = %channel,
             "Failed to complete file upload"
         );
-        Err(Box::new(std::io::Error::other(
-            response["error"].to_string(),
-        )))
+        let error_message =
+            get_optional_string(root, "error").unwrap_or_else(|| "unknown_error".to_string());
+        Err(Box::new(std::io::Error::other(error_message)))
     }
 }

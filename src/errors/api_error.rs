@@ -1,9 +1,8 @@
 use axum::{
-    Json,
+    body::Body,
     http::{HeaderValue, StatusCode, header::CONTENT_TYPE},
     response::{IntoResponse, Response},
 };
-use serde::Serialize;
 use tracing::error;
 
 #[derive(Debug)]
@@ -23,31 +22,27 @@ impl std::fmt::Display for ApiError {
 
 impl std::error::Error for ApiError {}
 
-#[derive(Serialize)]
-struct ProblemDetails {
-    #[serde(rename = "type")]
-    type_url: String,
-    title: String,
-    status: u16,
-    detail: String,
-}
-
-fn problem_details(status: StatusCode, detail: impl Into<String>) -> ProblemDetails {
+fn problem_details_json(status: StatusCode, detail: impl Into<String>) -> String {
     let title = status
         .canonical_reason()
         .unwrap_or("Unknown Error")
         .to_string();
-    ProblemDetails {
-        type_url: "about:blank".to_string(),
-        title,
-        status: status.as_u16(),
-        detail: detail.into(),
-    }
+    let detail = detail.into();
+    nojson::json(|f| {
+        f.object(|f| {
+            f.member("type", "about:blank")?;
+            f.member("title", &title)?;
+            f.member("status", status.as_u16())?;
+            f.member("detail", &detail)
+        })
+    })
+    .to_string()
 }
 
 pub fn problem_details_response(status: StatusCode, detail: impl Into<String>) -> Response {
-    let body = problem_details(status, detail);
-    let mut response = (status, Json(body)).into_response();
+    let body = problem_details_json(status, detail);
+    let mut response = Response::new(Body::from(body));
+    *response.status_mut() = status;
     response.headers_mut().insert(
         CONTENT_TYPE,
         HeaderValue::from_static("application/problem+json"),

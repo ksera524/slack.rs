@@ -1,40 +1,85 @@
 use axum::{Json, extract::State, response::IntoResponse};
 use base64::Engine;
-use serde::Deserialize;
-use tracing::{debug, error, info, instrument, warn};
 use std::time::Instant;
+use tracing::{debug, error, info, instrument, warn};
 
 use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
 
-use crate::{
-    config::state::AppState,
-    errors::api_error::ApiError,
-    extractors::AppJson,
-    service::slack_service,
-};
+use crate::{config::state::AppState, errors::api_error::ApiError, service::slack_service};
 
-#[derive(Deserialize)]
 pub struct SlackMessageRequest {
     pub channel: String,
     pub text: String,
 }
 
-#[derive(Deserialize)]
 pub struct SlackFileUploadRequest {
     pub file_name: String,
     pub file_data_base64: String,
     pub channel: String,
 }
 
-#[instrument(skip(app_state, payload), fields(
-    channel = %payload.channel,
-    text_length = payload.text.len(),
-    request_id = tracing::field::Empty
-))]
+fn parse_message_request(body: &str) -> Result<SlackMessageRequest, ApiError> {
+    let json = nojson::RawJson::parse(body)
+        .map_err(|e| ApiError::BadRequest(format!("Invalid JSON: {e}")))?;
+    let root = json.value();
+    let channel: String = root
+        .to_member("channel")
+        .map_err(|e| ApiError::BadRequest(e.to_string()))?
+        .required()
+        .map_err(|e| ApiError::BadRequest(e.to_string()))?
+        .try_into()
+        .map_err(|e| ApiError::BadRequest(format!("Invalid 'channel': {e}")))?;
+    let text: String = root
+        .to_member("text")
+        .map_err(|e| ApiError::BadRequest(e.to_string()))?
+        .required()
+        .map_err(|e| ApiError::BadRequest(e.to_string()))?
+        .try_into()
+        .map_err(|e| ApiError::BadRequest(format!("Invalid 'text': {e}")))?;
+
+    Ok(SlackMessageRequest { channel, text })
+}
+
+fn parse_file_upload_request(body: &str) -> Result<SlackFileUploadRequest, ApiError> {
+    let json = nojson::RawJson::parse(body)
+        .map_err(|e| ApiError::BadRequest(format!("Invalid JSON: {e}")))?;
+    let root = json.value();
+    let file_name: String = root
+        .to_member("file_name")
+        .map_err(|e| ApiError::BadRequest(e.to_string()))?
+        .required()
+        .map_err(|e| ApiError::BadRequest(e.to_string()))?
+        .try_into()
+        .map_err(|e| ApiError::BadRequest(format!("Invalid 'file_name': {e}")))?;
+    let file_data_base64: String = root
+        .to_member("file_data_base64")
+        .map_err(|e| ApiError::BadRequest(e.to_string()))?
+        .required()
+        .map_err(|e| ApiError::BadRequest(e.to_string()))?
+        .try_into()
+        .map_err(|e| ApiError::BadRequest(format!("Invalid 'file_data_base64': {e}")))?;
+    let channel: String = root
+        .to_member("channel")
+        .map_err(|e| ApiError::BadRequest(e.to_string()))?
+        .required()
+        .map_err(|e| ApiError::BadRequest(e.to_string()))?
+        .try_into()
+        .map_err(|e| ApiError::BadRequest(format!("Invalid 'channel': {e}")))?;
+
+    Ok(SlackFileUploadRequest {
+        file_name,
+        file_data_base64,
+        channel,
+    })
+}
+
+#[instrument(skip(app_state, body), fields(request_id = tracing::field::Empty))]
 pub async fn post_message(
     State(app_state): State<AppState>,
-    AppJson(payload): AppJson<SlackMessageRequest>,
+    body: String,
 ) -> Result<Json<String>, ApiError> {
+    let payload = parse_message_request(&body)?;
+
     debug!(
         channel = %payload.channel,
         text_length = payload.text.len(),
@@ -70,16 +115,13 @@ pub async fn post_message(
     Ok(Json(response_text))
 }
 
-#[instrument(skip(app_state, payload), fields(
-    channel = %payload.channel,
-    file_name = %payload.file_name,
-    file_size = payload.file_data_base64.len(),
-    request_id = tracing::field::Empty
-))]
+#[instrument(skip(app_state, body), fields(request_id = tracing::field::Empty))]
 pub async fn upload_file_base64(
     State(app_state): State<AppState>,
-    AppJson(payload): AppJson<SlackFileUploadRequest>,
+    body: String,
 ) -> Result<impl IntoResponse, ApiError> {
+    let payload = parse_file_upload_request(&body)?;
+
     let base64_size = payload.file_data_base64.len();
     debug!(
         file_name = %payload.file_name,
@@ -89,7 +131,8 @@ pub async fn upload_file_base64(
     );
 
     // 大容量ファイルの場合の処理時間警告
-    if base64_size > 50_000_000 {  // 50MB以上
+    if base64_size > 50_000_000 {
+        // 50MB以上
         info!(
             file_name = %payload.file_name,
             base64_size = base64_size,
