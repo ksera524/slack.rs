@@ -1,19 +1,27 @@
 use axum::{
-    http::{header::CONTENT_TYPE, HeaderValue, StatusCode},
-    response::{IntoResponse, Response},
     Json,
+    http::{HeaderValue, StatusCode, header::CONTENT_TYPE},
+    response::{IntoResponse, Response},
 };
 use serde::Serialize;
-use thiserror::Error;
 use tracing::error;
 
-#[derive(Debug, Error)]
+#[derive(Debug)]
 pub enum ApiError {
-    #[error("Bad Request: {0}")]
     BadRequest(String),
-    #[error("Internal Server Error")]
     InternalServerError(String),
 }
+
+impl std::fmt::Display for ApiError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::BadRequest(message) => write!(f, "Bad Request: {message}"),
+            Self::InternalServerError(_) => write!(f, "Internal Server Error"),
+        }
+    }
+}
+
+impl std::error::Error for ApiError {}
 
 #[derive(Serialize)]
 struct ProblemDetails {

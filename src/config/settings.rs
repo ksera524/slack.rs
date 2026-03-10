@@ -1,16 +1,24 @@
 use std::env;
-use thiserror::Error;
 
 #[derive(Debug, Clone)]
 pub struct Settings {
     pub slack_bot_token: String,
     pub slack_api_base_url: String,
 }
-#[derive(Debug, Error)]
+#[derive(Debug)]
 pub enum SettingError {
-    #[error("Missing environment variable {0}")]
     MissingEnvVar(String),
 }
+
+impl std::fmt::Display for SettingError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::MissingEnvVar(name) => write!(f, "Missing environment variable {name}"),
+        }
+    }
+}
+
+impl std::error::Error for SettingError {}
 
 impl Settings {
     pub fn new() -> Result<Self, SettingError> {
