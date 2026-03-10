@@ -81,25 +81,41 @@ async fn post_message_ok() -> eyre::Result<()> {
 }
 
 #[tanu::test]
-async fn upload_base64_ok() -> eyre::Result<()> {
+async fn openapi_json_ok() -> eyre::Result<()> {
     let mock_slack = support::start_mock_slack().await?;
     let app = support::start_app(mock_slack.base_url.clone()).await?;
 
     let client = Client::new();
-    let file_data = support::encode_base64(b"hello");
     let response = client
-        .post(format!("{}/slack/upload_base64", app.base_url))
-        .header("content-type", "application/json")
-        .body(
-            nojson::json(|f| {
-                f.object(|f| {
-                    f.member("file_name", "hello.txt")?;
-                    f.member("file_data_base64", &file_data)?;
-                    f.member("channel", "C123456")
-                })
-            })
-            .to_string(),
-        )
+        .get(format!("{}/openapi.json", app.base_url))
+        .send()
+        .await?;
+
+    check_eq!(200, response.status().as_u16());
+
+    let body = response.text().await?;
+    check_eq!("3.0.3", get_str(&body, "openapi"));
+
+    app.shutdown();
+    mock_slack.shutdown();
+    Ok(())
+}
+
+#[tanu::test]
+async fn upload_image_ok() -> eyre::Result<()> {
+    let mock_slack = support::start_mock_slack().await?;
+    let app = support::start_app(mock_slack.base_url.clone()).await?;
+
+    let client = Client::new();
+    let response = client
+        .post(format!(
+            "{}/slack/upload/image?channel=C123456&file_name=hello.png",
+            app.base_url
+        ))
+        .header("content-type", "image/png")
+        .body(vec![
+            0x89, b'P', b'N', b'G', b'\r', b'\n', 0x1A, b'\n', 0x00,
+        ])
         .send()
         .await?;
 
@@ -114,24 +130,41 @@ async fn upload_base64_ok() -> eyre::Result<()> {
 }
 
 #[tanu::test]
-async fn upload_base64_invalid() -> eyre::Result<()> {
+async fn upload_pdf_ok() -> eyre::Result<()> {
     let mock_slack = support::start_mock_slack().await?;
     let app = support::start_app(mock_slack.base_url.clone()).await?;
 
     let client = Client::new();
     let response = client
-        .post(format!("{}/slack/upload_base64", app.base_url))
-        .header("content-type", "application/json")
-        .body(
-            nojson::json(|f| {
-                f.object(|f| {
-                    f.member("file_name", "bad.txt")?;
-                    f.member("file_data_base64", "not_base64")?;
-                    f.member("channel", "C123456")
-                })
-            })
-            .to_string(),
-        )
+        .post(format!(
+            "{}/slack/upload/pdf?channel=C123456&file_name=doc.pdf",
+            app.base_url
+        ))
+        .header("content-type", "application/pdf")
+        .body(b"%PDF-1.7\n1 0 obj\n<<>>\nendobj\n".to_vec())
+        .send()
+        .await?;
+
+    check_eq!(200, response.status().as_u16());
+
+    let body = response.json::<String>().await?;
+    check!(get_bool(&body, "ok"));
+
+    app.shutdown();
+    mock_slack.shutdown();
+    Ok(())
+}
+
+#[tanu::test]
+async fn upload_pdf_invalid_content_type() -> eyre::Result<()> {
+    let mock_slack = support::start_mock_slack().await?;
+    let app = support::start_app(mock_slack.base_url.clone()).await?;
+
+    let client = Client::new();
+    let response = client
+        .post(format!("{}/slack/upload/pdf?channel=C123456", app.base_url))
+        .header("content-type", "text/plain")
+        .body(b"%PDF-1.7".to_vec())
         .send()
         .await?;
 
@@ -142,7 +175,62 @@ async fn upload_base64_invalid() -> eyre::Result<()> {
     check_eq!("Bad Request", get_str(&body, "title"));
     check_eq!(400, get_i64(&body, "status"));
     check_eq!(
-        "Failed to decode base64 file data",
+        "Unsupported Content-Type. Use application/pdf",
+        get_str(&body, "detail")
+    );
+
+    app.shutdown();
+    mock_slack.shutdown();
+    Ok(())
+}
+
+#[tanu::test]
+async fn upload_pdf_invalid_signature() -> eyre::Result<()> {
+    let mock_slack = support::start_mock_slack().await?;
+    let app = support::start_app(mock_slack.base_url.clone()).await?;
+
+    let client = Client::new();
+    let response = client
+        .post(format!("{}/slack/upload/pdf?channel=C123456", app.base_url))
+        .header("content-type", "application/pdf")
+        .body(b"not_a_pdf".to_vec())
+        .send()
+        .await?;
+
+    check_eq!(400, response.status().as_u16());
+
+    let body = response.text().await?;
+    check_eq!("about:blank", get_str(&body, "type"));
+    check_eq!("Bad Request", get_str(&body, "title"));
+    check_eq!(400, get_i64(&body, "status"));
+    check_eq!("Body is not a valid PDF document", get_str(&body, "detail"));
+
+    app.shutdown();
+    mock_slack.shutdown();
+    Ok(())
+}
+
+#[tanu::test]
+async fn upload_pdf_missing_channel() -> eyre::Result<()> {
+    let mock_slack = support::start_mock_slack().await?;
+    let app = support::start_app(mock_slack.base_url.clone()).await?;
+
+    let client = Client::new();
+    let response = client
+        .post(format!("{}/slack/upload/pdf", app.base_url))
+        .header("content-type", "application/pdf")
+        .body(b"%PDF-1.7".to_vec())
+        .send()
+        .await?;
+
+    check_eq!(400, response.status().as_u16());
+
+    let body = response.text().await?;
+    check_eq!("about:blank", get_str(&body, "type"));
+    check_eq!("Bad Request", get_str(&body, "title"));
+    check_eq!(400, get_i64(&body, "status"));
+    check_eq!(
+        "Missing required query parameter 'channel'",
         get_str(&body, "detail")
     );
 

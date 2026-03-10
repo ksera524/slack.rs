@@ -5,7 +5,6 @@ use axum::{
     response::{IntoResponse, Response},
     routing::{get, post},
 };
-use base64::Engine;
 use slack::{
     app,
     config::{settings::Settings, state::AppState},
@@ -148,8 +147,4 @@ async fn mock_complete_upload(_body: String) -> Response {
         })
         .to_string(),
     )
-}
-
-pub fn encode_base64(data: &[u8]) -> String {
-    base64::engine::general_purpose::STANDARD.encode(data)
 }
