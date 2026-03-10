@@ -5,13 +5,11 @@ use crate::middleware::{
 };
 use crate::routes;
 use axum::{Router, extract::DefaultBodyLimit, middleware, routing::get};
-use tower_http::trace::TraceLayer;
 
 pub fn create_app(app_state: AppState) -> Router {
     Router::new()
         .route("/health", get(health))
         .merge(routes::slack::create_slack_routes())
-        .layer(TraceLayer::new_for_http())
         .layer(middleware::from_fn(request_tracing_middleware))
         .layer(middleware::from_fn(problem_details_middleware))
         .layer(DefaultBodyLimit::disable())

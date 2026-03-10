@@ -1,12 +1,11 @@
 use axum::{
-    Json,
     Router,
     extract::{Path, State},
     http::StatusCode,
+    response::{IntoResponse, Response},
     routing::{get, post},
 };
 use base64::Engine;
-use serde_json::{Value, json};
 use slack::{
     app,
     config::{settings::Settings, state::AppState},
@@ -41,15 +40,17 @@ pub async fn start_mock_slack() -> tanu::eyre::Result<TestServer> {
     let router = Router::new()
         .route("/api/chat.postMessage", post(mock_chat_post_message))
         .route("/api/files.getUploadURLExternal", get(mock_get_upload_url))
-        .route("/api/files.completeUploadExternal", post(mock_complete_upload))
+        .route(
+            "/api/files.completeUploadExternal",
+            post(mock_complete_upload),
+        )
         .route("/upload/{id}", post(mock_upload_content))
         .with_state(state);
 
     let (shutdown_tx, shutdown_rx) = oneshot::channel();
-    let server = axum::serve(listener, router)
-        .with_graceful_shutdown(async move {
-            let _ = shutdown_rx.await;
-        });
+    let server = axum::serve(listener, router).with_graceful_shutdown(async move {
+        let _ = shutdown_rx.await;
+    });
 
     tokio::spawn(async move {
         let _ = server.await;
@@ -75,10 +76,9 @@ pub async fn start_app(slack_api_base_url: String) -> tanu::eyre::Result<TestSer
     let app = app::create_app(app_state);
 
     let (shutdown_tx, shutdown_rx) = oneshot::channel();
-    let server = axum::serve(listener, app)
-        .with_graceful_shutdown(async move {
-            let _ = shutdown_rx.await;
-        });
+    let server = axum::serve(listener, app).with_graceful_shutdown(async move {
+        let _ = shutdown_rx.await;
+    });
 
     tokio::spawn(async move {
         let _ = server.await;
@@ -90,44 +90,64 @@ pub async fn start_app(slack_api_base_url: String) -> tanu::eyre::Result<TestSer
     })
 }
 
-async fn mock_chat_post_message(
-    Json(payload): Json<Value>,
-) -> Json<Value> {
-    let channel = payload.get("channel").cloned().unwrap_or_else(|| json!(""));
-    Json(json!({
-        "ok": true,
-        "channel": channel,
-        "ts": "1700000000.000000"
-    }))
+fn json_response(body: String) -> Response {
+    (StatusCode::OK, [("content-type", "application/json")], body).into_response()
 }
 
-async fn mock_get_upload_url(
-    State(state): State<MockSlackState>,
-) -> Json<Value> {
+async fn mock_chat_post_message(body: String) -> Response {
+    let channel = nojson::RawJson::parse(&body)
+        .ok()
+        .and_then(|json| {
+            json.value()
+                .to_member("channel")
+                .ok()
+                .and_then(|member| member.optional())
+                .and_then(|value| String::try_from(value).ok())
+        })
+        .unwrap_or_default();
+
+    json_response(
+        nojson::json(|f| {
+            f.object(|f| {
+                f.member("ok", true)?;
+                f.member("channel", &channel)?;
+                f.member("ts", "1700000000.000000")
+            })
+        })
+        .to_string(),
+    )
+}
+
+async fn mock_get_upload_url(State(state): State<MockSlackState>) -> Response {
     let file_id = "F123456";
     let upload_url = format!("{}/upload/{}", state.public_base_url, file_id);
-    Json(json!({
-        "ok": true,
-        "file_id": file_id,
-        "upload_url": upload_url
-    }))
+    json_response(
+        nojson::json(|f| {
+            f.object(|f| {
+                f.member("ok", true)?;
+                f.member("file_id", file_id)?;
+                f.member("upload_url", &upload_url)
+            })
+        })
+        .to_string(),
+    )
 }
 
-async fn mock_upload_content(
-    Path(_id): Path<String>,
-    body: axum::body::Bytes,
-) -> StatusCode {
+async fn mock_upload_content(Path(_id): Path<String>, body: axum::body::Bytes) -> StatusCode {
     let _ = body;
     StatusCode::OK
 }
 
-async fn mock_complete_upload(
-    Json(_payload): Json<Value>,
-) -> Json<Value> {
-    Json(json!({
-        "ok": true,
-        "files": []
-    }))
+async fn mock_complete_upload(_body: String) -> Response {
+    json_response(
+        nojson::json(|f| {
+            f.object(|f| {
+                f.member("ok", true)?;
+                f.member("files", nojson::array(|_| Ok(())))
+            })
+        })
+        .to_string(),
+    )
 }
 
 pub fn encode_base64(data: &[u8]) -> String {

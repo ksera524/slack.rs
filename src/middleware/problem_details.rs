@@ -1,16 +1,8 @@
-use axum::{
-    extract::Request,
-    http::header::CONTENT_TYPE,
-    middleware::Next,
-    response::Response,
-};
+use axum::{extract::Request, http::header::CONTENT_TYPE, middleware::Next, response::Response};
 
 use crate::errors::api_error::problem_details_response;
 
-pub async fn problem_details_middleware(
-    request: Request,
-    next: Next,
-) -> Response {
+pub async fn problem_details_middleware(request: Request, next: Next) -> Response {
     let response = next.run(request).await;
     let status = response.status();
 
