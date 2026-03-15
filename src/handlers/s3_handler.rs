@@ -418,7 +418,10 @@ pub async fn preview_object(
     let s3_response = s3_service::get_object_proxy(
         &app_state.client,
         &app_state.settings,
-        ProxyObjectInput { bucket, key },
+        ProxyObjectInput {
+            bucket,
+            key: key.clone(),
+        },
     )
     .await?;
 
