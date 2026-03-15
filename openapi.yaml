@@ -1,0 +1,869 @@
+openapi: 3.1.0
+info:
+  title: slack.rs Wrapper API
+  version: 0.1.0
+  description: |
+    Wrapper API for Slack and S3-compatible storage.
+servers:
+  - url: http://localhost:3000
+paths:
+  /health:
+    get:
+      operationId: health
+      summary: Health check
+      responses:
+        '200':
+          description: OK
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: ok
+
+  /slack/message:
+    post:
+      operationId: postSlackMessage
+      summary: Post message to Slack channel
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SlackMessageRequest'
+      responses:
+        '200':
+          description: Slack API response JSON as string payload
+          content:
+            application/json:
+              schema:
+                type: string
+        default:
+          $ref: '#/components/responses/ProblemDetails'
+
+  /slack/upload_base64:
+    post:
+      operationId: uploadSlackFileBase64
+      summary: Upload file to Slack via base64 content
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SlackUploadBase64Request'
+      responses:
+        '200':
+          description: Slack API response JSON as string payload
+          content:
+            application/json:
+              schema:
+                type: string
+        default:
+          $ref: '#/components/responses/ProblemDetails'
+
+  /s3/put_object_base64:
+    post:
+      operationId: s3PutObjectBase64
+      summary: Put object with base64-encoded body
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/S3PutObjectBase64Request'
+      responses:
+        '200':
+          description: Put object result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/S3PutObjectResponse'
+        default:
+          $ref: '#/components/responses/ProblemDetails'
+
+  /s3/get_object_base64:
+    post:
+      operationId: s3GetObjectBase64
+      summary: Get object and return body as base64
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/S3BucketKeyRequest'
+      responses:
+        '200':
+          description: Get object result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/S3GetObjectResponse'
+        default:
+          $ref: '#/components/responses/ProblemDetails'
+
+  /s3/head_object:
+    post:
+      operationId: s3HeadObject
+      summary: Get object metadata
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/S3BucketKeyRequest'
+      responses:
+        '200':
+          description: Head object result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/S3HeadObjectResponse'
+        default:
+          $ref: '#/components/responses/ProblemDetails'
+
+  /s3/delete_object:
+    post:
+      operationId: s3DeleteObject
+      summary: Delete object
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/S3BucketKeyRequest'
+      responses:
+        '200':
+          description: Delete object result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/S3DeleteObjectResponse'
+        default:
+          $ref: '#/components/responses/ProblemDetails'
+
+  /s3/list_objects_v2:
+    post:
+      operationId: s3ListObjectsV2
+      summary: List objects in a bucket
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/S3ListObjectsV2Request'
+      responses:
+        '200':
+          description: List objects result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/S3ListObjectsV2Response'
+        default:
+          $ref: '#/components/responses/ProblemDetails'
+
+  /s3/create_multipart_upload:
+    post:
+      operationId: s3CreateMultipartUpload
+      summary: Create multipart upload
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/S3CreateMultipartUploadRequest'
+      responses:
+        '200':
+          description: Create multipart upload result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/S3CreateMultipartUploadResponse'
+        default:
+          $ref: '#/components/responses/ProblemDetails'
+
+  /s3/upload_part_base64:
+    post:
+      operationId: s3UploadPartBase64
+      summary: Upload multipart part with base64 payload
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/S3UploadPartBase64Request'
+      responses:
+        '200':
+          description: Upload part result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/S3UploadPartResponse'
+        default:
+          $ref: '#/components/responses/ProblemDetails'
+
+  /s3/complete_multipart_upload:
+    post:
+      operationId: s3CompleteMultipartUpload
+      summary: Complete multipart upload
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/S3CompleteMultipartUploadRequest'
+      responses:
+        '200':
+          description: Complete multipart upload result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/S3CompleteMultipartUploadResponse'
+        default:
+          $ref: '#/components/responses/ProblemDetails'
+
+  /s3/abort_multipart_upload:
+    post:
+      operationId: s3AbortMultipartUpload
+      summary: Abort multipart upload
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/S3AbortMultipartUploadRequest'
+      responses:
+        '200':
+          description: Abort multipart upload result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  aborted:
+                    type: boolean
+                required: [aborted]
+        default:
+          $ref: '#/components/responses/ProblemDetails'
+
+  /s3/list_parts:
+    post:
+      operationId: s3ListParts
+      summary: List uploaded multipart parts
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/S3ListPartsRequest'
+      responses:
+        '200':
+          description: List parts result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/S3ListPartsResponse'
+        default:
+          $ref: '#/components/responses/ProblemDetails'
+
+  /s3/list_multipart_uploads:
+    post:
+      operationId: s3ListMultipartUploads
+      summary: List active multipart uploads
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/S3ListMultipartUploadsRequest'
+      responses:
+        '200':
+          description: List multipart uploads result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/S3ListMultipartUploadsResponse'
+        default:
+          $ref: '#/components/responses/ProblemDetails'
+
+  /s3/presigned_get_object:
+    post:
+      operationId: s3PresignedGetObject
+      summary: Generate presigned GET URL
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/S3PresignedObjectRequest'
+      responses:
+        '200':
+          description: Presigned request result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/S3PresignedObjectResponse'
+        default:
+          $ref: '#/components/responses/ProblemDetails'
+
+  /s3/presigned_put_object:
+    post:
+      operationId: s3PresignedPutObject
+      summary: Generate presigned PUT URL
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/S3PresignedObjectRequest'
+      responses:
+        '200':
+          description: Presigned request result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/S3PresignedObjectResponse'
+        default:
+          $ref: '#/components/responses/ProblemDetails'
+
+  /s3/list_buckets:
+    post:
+      operationId: s3ListBuckets
+      summary: List buckets
+      responses:
+        '200':
+          description: List buckets result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/S3ListBucketsResponse'
+        default:
+          $ref: '#/components/responses/ProblemDetails'
+
+  /s3/create_bucket:
+    post:
+      operationId: s3CreateBucket
+      summary: Create bucket
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/S3BucketRequest'
+      responses:
+        '200':
+          description: Create bucket result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  location:
+                    type: [string, 'null']
+        default:
+          $ref: '#/components/responses/ProblemDetails'
+
+  /s3/head_bucket:
+    post:
+      operationId: s3HeadBucket
+      summary: Get bucket metadata
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/S3BucketRequest'
+      responses:
+        '200':
+          description: Head bucket result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  bucket_region:
+                    type: [string, 'null']
+        default:
+          $ref: '#/components/responses/ProblemDetails'
+
+  /s3/delete_bucket:
+    post:
+      operationId: s3DeleteBucket
+      summary: Delete bucket
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/S3BucketRequest'
+      responses:
+        '200':
+          description: Delete bucket result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  deleted:
+                    type: boolean
+                required: [deleted]
+        default:
+          $ref: '#/components/responses/ProblemDetails'
+
+components:
+  responses:
+    ProblemDetails:
+      description: RFC 9457 problem details response
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetails'
+
+  schemas:
+    ProblemDetails:
+      type: object
+      properties:
+        type:
+          type: string
+          example: about:blank
+        title:
+          type: string
+        status:
+          type: integer
+          format: int32
+        detail:
+          type: string
+      required: [type, title, status, detail]
+
+    SlackMessageRequest:
+      type: object
+      properties:
+        channel:
+          type: string
+        text:
+          type: string
+      required: [channel, text]
+
+    SlackUploadBase64Request:
+      type: object
+      properties:
+        file_name:
+          type: string
+        file_data_base64:
+          type: string
+        channel:
+          type: string
+      required: [file_name, file_data_base64, channel]
+
+    S3BucketRequest:
+      type: object
+      properties:
+        bucket:
+          type: string
+      required: [bucket]
+
+    S3BucketKeyRequest:
+      type: object
+      properties:
+        bucket:
+          type: string
+        key:
+          type: string
+      required: [bucket, key]
+
+    S3PutObjectBase64Request:
+      allOf:
+        - $ref: '#/components/schemas/S3BucketKeyRequest'
+        - type: object
+          properties:
+            file_data_base64:
+              type: string
+            content_type:
+              type: [string, 'null']
+          required: [file_data_base64]
+
+    S3PutObjectResponse:
+      type: object
+      properties:
+        e_tag:
+          type: [string, 'null']
+        version_id:
+          type: [string, 'null']
+
+    S3GetObjectResponse:
+      type: object
+      properties:
+        file_data_base64:
+          type: string
+        content_type:
+          type: [string, 'null']
+        content_length:
+          type: [integer, 'null']
+          format: int64
+        e_tag:
+          type: [string, 'null']
+        last_modified:
+          type: [string, 'null']
+        version_id:
+          type: [string, 'null']
+        metadata:
+          type: object
+          additionalProperties:
+            type: string
+      required: [file_data_base64]
+
+    S3HeadObjectResponse:
+      type: object
+      properties:
+        content_type:
+          type: [string, 'null']
+        content_length:
+          type: [integer, 'null']
+          format: int64
+        e_tag:
+          type: [string, 'null']
+        last_modified:
+          type: [string, 'null']
+        version_id:
+          type: [string, 'null']
+        metadata:
+          type: object
+          additionalProperties:
+            type: string
+
+    S3DeleteObjectResponse:
+      type: object
+      properties:
+        delete_marker:
+          type: [boolean, 'null']
+        version_id:
+          type: [string, 'null']
+
+    S3ListObjectsV2Request:
+      type: object
+      properties:
+        bucket:
+          type: string
+        prefix:
+          type: [string, 'null']
+        delimiter:
+          type: [string, 'null']
+        max_keys:
+          type: [integer, 'null']
+          format: int32
+        continuation_token:
+          type: [string, 'null']
+        start_after:
+          type: [string, 'null']
+      required: [bucket]
+
+    S3ObjectSummary:
+      type: object
+      properties:
+        key:
+          type: [string, 'null']
+        last_modified:
+          type: [string, 'null']
+        e_tag:
+          type: [string, 'null']
+        size:
+          type: [integer, 'null']
+          format: int64
+        storage_class:
+          type: [string, 'null']
+
+    S3CommonPrefix:
+      type: object
+      properties:
+        prefix:
+          type: [string, 'null']
+
+    S3ListObjectsV2Response:
+      type: object
+      properties:
+        is_truncated:
+          type: [boolean, 'null']
+        name:
+          type: [string, 'null']
+        prefix:
+          type: [string, 'null']
+        delimiter:
+          type: [string, 'null']
+        max_keys:
+          type: [integer, 'null']
+          format: int32
+        key_count:
+          type: [integer, 'null']
+          format: int32
+        continuation_token:
+          type: [string, 'null']
+        next_continuation_token:
+          type: [string, 'null']
+        start_after:
+          type: [string, 'null']
+        contents:
+          type: array
+          items:
+            $ref: '#/components/schemas/S3ObjectSummary'
+        common_prefixes:
+          type: array
+          items:
+            $ref: '#/components/schemas/S3CommonPrefix'
+
+    S3CreateMultipartUploadRequest:
+      allOf:
+        - $ref: '#/components/schemas/S3BucketKeyRequest'
+        - type: object
+          properties:
+            content_type:
+              type: [string, 'null']
+
+    S3CreateMultipartUploadResponse:
+      type: object
+      properties:
+        bucket:
+          type: [string, 'null']
+        key:
+          type: [string, 'null']
+        upload_id:
+          type: [string, 'null']
+
+    S3UploadPartBase64Request:
+      type: object
+      properties:
+        bucket:
+          type: string
+        key:
+          type: string
+        upload_id:
+          type: string
+        part_number:
+          type: integer
+          format: int32
+        part_data_base64:
+          type: string
+      required: [bucket, key, upload_id, part_number, part_data_base64]
+
+    S3UploadPartResponse:
+      type: object
+      properties:
+        e_tag:
+          type: [string, 'null']
+
+    S3CompletePart:
+      type: object
+      properties:
+        part_number:
+          type: integer
+          format: int32
+        e_tag:
+          type: string
+      required: [part_number, e_tag]
+
+    S3CompleteMultipartUploadRequest:
+      type: object
+      properties:
+        bucket:
+          type: string
+        key:
+          type: string
+        upload_id:
+          type: string
+        parts:
+          type: array
+          items:
+            $ref: '#/components/schemas/S3CompletePart'
+      required: [bucket, key, upload_id, parts]
+
+    S3CompleteMultipartUploadResponse:
+      type: object
+      properties:
+        location:
+          type: [string, 'null']
+        bucket:
+          type: [string, 'null']
+        key:
+          type: [string, 'null']
+        e_tag:
+          type: [string, 'null']
+        version_id:
+          type: [string, 'null']
+
+    S3AbortMultipartUploadRequest:
+      type: object
+      properties:
+        bucket:
+          type: string
+        key:
+          type: string
+        upload_id:
+          type: string
+      required: [bucket, key, upload_id]
+
+    S3ListPartsRequest:
+      type: object
+      properties:
+        bucket:
+          type: string
+        key:
+          type: string
+        upload_id:
+          type: string
+        max_parts:
+          type: [integer, 'null']
+          format: int32
+        part_number_marker:
+          type: [integer, 'null']
+          format: int32
+      required: [bucket, key, upload_id]
+
+    S3PartSummary:
+      type: object
+      properties:
+        part_number:
+          type: [integer, 'null']
+          format: int32
+        last_modified:
+          type: [string, 'null']
+        e_tag:
+          type: [string, 'null']
+        size:
+          type: [integer, 'null']
+          format: int64
+
+    S3ListPartsResponse:
+      type: object
+      properties:
+        bucket:
+          type: [string, 'null']
+        key:
+          type: [string, 'null']
+        upload_id:
+          type: [string, 'null']
+        part_number_marker:
+          type: [integer, 'null']
+          format: int32
+        next_part_number_marker:
+          type: [integer, 'null']
+          format: int32
+        max_parts:
+          type: [integer, 'null']
+          format: int32
+        is_truncated:
+          type: [boolean, 'null']
+        storage_class:
+          type: [string, 'null']
+        parts:
+          type: array
+          items:
+            $ref: '#/components/schemas/S3PartSummary'
+
+    S3ListMultipartUploadsRequest:
+      type: object
+      properties:
+        bucket:
+          type: string
+        prefix:
+          type: [string, 'null']
+        delimiter:
+          type: [string, 'null']
+        max_uploads:
+          type: [integer, 'null']
+          format: int32
+        key_marker:
+          type: [string, 'null']
+        upload_id_marker:
+          type: [string, 'null']
+      required: [bucket]
+
+    S3UploadSummary:
+      type: object
+      properties:
+        upload_id:
+          type: [string, 'null']
+        key:
+          type: [string, 'null']
+        initiated:
+          type: [string, 'null']
+        storage_class:
+          type: [string, 'null']
+
+    S3ListMultipartUploadsResponse:
+      type: object
+      properties:
+        bucket:
+          type: [string, 'null']
+        key_marker:
+          type: [string, 'null']
+        upload_id_marker:
+          type: [string, 'null']
+        next_key_marker:
+          type: [string, 'null']
+        next_upload_id_marker:
+          type: [string, 'null']
+        prefix:
+          type: [string, 'null']
+        delimiter:
+          type: [string, 'null']
+        max_uploads:
+          type: [integer, 'null']
+          format: int32
+        is_truncated:
+          type: [boolean, 'null']
+        uploads:
+          type: array
+          items:
+            $ref: '#/components/schemas/S3UploadSummary'
+        common_prefixes:
+          type: array
+          items:
+            $ref: '#/components/schemas/S3CommonPrefix'
+
+    S3PresignedObjectRequest:
+      allOf:
+        - $ref: '#/components/schemas/S3BucketKeyRequest'
+        - type: object
+          properties:
+            expires_in_secs:
+              type: [integer, 'null']
+              format: int64
+
+    S3PresignedObjectResponse:
+      type: object
+      properties:
+        url:
+          type: string
+          format: uri
+        method:
+          type: string
+        headers:
+          type: array
+          items:
+            type: array
+            minItems: 2
+            maxItems: 2
+            items:
+              type: string
+      required: [url, method, headers]
+
+    S3BucketSummary:
+      type: object
+      properties:
+        name:
+          type: [string, 'null']
+        creation_date:
+          type: [string, 'null']
+        bucket_region:
+          type: [string, 'null']
+        bucket_arn:
+          type: [string, 'null']
+
+    S3ListBucketsResponse:
+      type: object
+      properties:
+        continuation_token:
+          type: [string, 'null']
+        prefix:
+          type: [string, 'null']
+        buckets:
+          type: array
+          items:
+            $ref: '#/components/schemas/S3BucketSummary'

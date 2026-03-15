@@ -60,7 +60,8 @@ fn get_i64(body: &str, key: &str) -> i64 {
 #[tanu::test]
 async fn post_message_ok() -> eyre::Result<()> {
     let mock_slack = support::start_mock_slack().await?;
-    let app = support::start_app(mock_slack.base_url.clone()).await?;
+    let mock_s3 = support::start_mock_s3().await?;
+    let app = support::start_app(mock_slack.base_url.clone(), mock_s3.base_url.clone()).await?;
 
     let client = Client::new();
     let response = client
@@ -76,6 +77,7 @@ async fn post_message_ok() -> eyre::Result<()> {
     check!(get_bool(&body, "ok"));
 
     app.shutdown();
+    mock_s3.shutdown();
     mock_slack.shutdown();
     Ok(())
 }
@@ -83,7 +85,8 @@ async fn post_message_ok() -> eyre::Result<()> {
 #[tanu::test]
 async fn openapi_json_ok() -> eyre::Result<()> {
     let mock_slack = support::start_mock_slack().await?;
-    let app = support::start_app(mock_slack.base_url.clone()).await?;
+    let mock_s3 = support::start_mock_s3().await?;
+    let app = support::start_app(mock_slack.base_url.clone(), mock_s3.base_url.clone()).await?;
 
     let client = Client::new();
     let response = client
@@ -97,6 +100,7 @@ async fn openapi_json_ok() -> eyre::Result<()> {
     check_eq!("3.0.3", get_str(&body, "openapi"));
 
     app.shutdown();
+    mock_s3.shutdown();
     mock_slack.shutdown();
     Ok(())
 }
@@ -104,7 +108,8 @@ async fn openapi_json_ok() -> eyre::Result<()> {
 #[tanu::test]
 async fn upload_image_ok() -> eyre::Result<()> {
     let mock_slack = support::start_mock_slack().await?;
-    let app = support::start_app(mock_slack.base_url.clone()).await?;
+    let mock_s3 = support::start_mock_s3().await?;
+    let app = support::start_app(mock_slack.base_url.clone(), mock_s3.base_url.clone()).await?;
 
     let client = Client::new();
     let response = client
@@ -125,6 +130,7 @@ async fn upload_image_ok() -> eyre::Result<()> {
     check!(get_bool(&body, "ok"));
 
     app.shutdown();
+    mock_s3.shutdown();
     mock_slack.shutdown();
     Ok(())
 }
@@ -132,7 +138,8 @@ async fn upload_image_ok() -> eyre::Result<()> {
 #[tanu::test]
 async fn upload_pdf_ok() -> eyre::Result<()> {
     let mock_slack = support::start_mock_slack().await?;
-    let app = support::start_app(mock_slack.base_url.clone()).await?;
+    let mock_s3 = support::start_mock_s3().await?;
+    let app = support::start_app(mock_slack.base_url.clone(), mock_s3.base_url.clone()).await?;
 
     let client = Client::new();
     let response = client
@@ -151,6 +158,7 @@ async fn upload_pdf_ok() -> eyre::Result<()> {
     check!(get_bool(&body, "ok"));
 
     app.shutdown();
+    mock_s3.shutdown();
     mock_slack.shutdown();
     Ok(())
 }
@@ -158,7 +166,8 @@ async fn upload_pdf_ok() -> eyre::Result<()> {
 #[tanu::test]
 async fn upload_pdf_invalid_content_type() -> eyre::Result<()> {
     let mock_slack = support::start_mock_slack().await?;
-    let app = support::start_app(mock_slack.base_url.clone()).await?;
+    let mock_s3 = support::start_mock_s3().await?;
+    let app = support::start_app(mock_slack.base_url.clone(), mock_s3.base_url.clone()).await?;
 
     let client = Client::new();
     let response = client
@@ -180,6 +189,7 @@ async fn upload_pdf_invalid_content_type() -> eyre::Result<()> {
     );
 
     app.shutdown();
+    mock_s3.shutdown();
     mock_slack.shutdown();
     Ok(())
 }
@@ -187,7 +197,8 @@ async fn upload_pdf_invalid_content_type() -> eyre::Result<()> {
 #[tanu::test]
 async fn upload_pdf_invalid_signature() -> eyre::Result<()> {
     let mock_slack = support::start_mock_slack().await?;
-    let app = support::start_app(mock_slack.base_url.clone()).await?;
+    let mock_s3 = support::start_mock_s3().await?;
+    let app = support::start_app(mock_slack.base_url.clone(), mock_s3.base_url.clone()).await?;
 
     let client = Client::new();
     let response = client
@@ -206,6 +217,7 @@ async fn upload_pdf_invalid_signature() -> eyre::Result<()> {
     check_eq!("Body is not a valid PDF document", get_str(&body, "detail"));
 
     app.shutdown();
+    mock_s3.shutdown();
     mock_slack.shutdown();
     Ok(())
 }
@@ -213,7 +225,8 @@ async fn upload_pdf_invalid_signature() -> eyre::Result<()> {
 #[tanu::test]
 async fn upload_pdf_missing_channel() -> eyre::Result<()> {
     let mock_slack = support::start_mock_slack().await?;
-    let app = support::start_app(mock_slack.base_url.clone()).await?;
+    let mock_s3 = support::start_mock_s3().await?;
+    let app = support::start_app(mock_slack.base_url.clone(), mock_s3.base_url.clone()).await?;
 
     let client = Client::new();
     let response = client
@@ -235,6 +248,7 @@ async fn upload_pdf_missing_channel() -> eyre::Result<()> {
     );
 
     app.shutdown();
+    mock_s3.shutdown();
     mock_slack.shutdown();
     Ok(())
 }

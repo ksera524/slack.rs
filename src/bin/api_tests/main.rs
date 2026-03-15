@@ -1,3 +1,4 @@
+mod s3_api;
 mod slack_api;
 mod support;
 
