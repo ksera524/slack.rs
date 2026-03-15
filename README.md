@@ -70,13 +70,13 @@ OpenAPI definition: `openapi.yaml`
 
 - `SLACK_BOT_TOKEN` (必須)
 - `SLACK_API_BASE_URL` (任意, デフォルト: `https://slack.com/api`)
-- `S3_ACCESS_KEY_ID` (必須)
-- `S3_SECRET_ACCESS_KEY` (必須)
-- `S3_REGION` (任意, デフォルト: `us-east-1`)
-- `S3_ENDPOINT` (任意, 例: `http://rustfs.example.local:9000`)
-- `S3_USE_PATH_STYLE` (任意, デフォルト: `true`)
-- `S3_IGNORE_CERT_CHECK` (任意, デフォルト: `false`)
-- `S3_SESSION_TOKEN` (任意)
+- `RUSTFS_S3_ACCESS_KEY_ID` (必須)
+- `RUSTFS_S3_SECRET_ACCESS_KEY` (必須)
+- `RUSTFS_S3_REGION` (任意, デフォルト: `us-east-1`)
+- `RUSTFS_S3_ENDPOINT` (任意, 例: `http://rustfs.example.local:9000`)
+- `RUSTFS_S3_USE_PATH_STYLE` (任意, デフォルト: `true`)
+- `RUSTFS_S3_IGNORE_CERT_CHECK` (任意, デフォルト: `false`)
+- `RUSTFS_S3_SESSION_TOKEN` (任意)
 
 ## 起動
 
