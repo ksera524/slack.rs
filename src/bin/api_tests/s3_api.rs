@@ -195,3 +195,54 @@ async fn s3_preview_object_not_found() -> eyre::Result<()> {
     mock_slack.shutdown();
     Ok(())
 }
+
+#[tanu::test]
+async fn s3_preview_pdf_forces_inline_disposition() -> eyre::Result<()> {
+    let mock_slack = support::start_mock_slack().await?;
+    let mock_s3 = support::start_mock_s3().await?;
+    let app = support::start_app(mock_slack.base_url.clone(), mock_s3.base_url.clone()).await?;
+
+    let client = Client::new();
+    let file_data_base64 = support::encode_base64(b"%PDF-1.7 mock");
+
+    let _ = client
+        .post(format!("{}/s3/put_object_base64", app.base_url))
+        .json(&json!({
+            "bucket": "team-a",
+            "key": "preview/document.pdf",
+            "file_data_base64": file_data_base64,
+            "content_type": "application/octet-stream"
+        }))
+        .send()
+        .await?;
+
+    let preview_response = client
+        .get(format!(
+            "{}/s3/preview/team-a/preview/document.pdf",
+            app.base_url
+        ))
+        .send()
+        .await?;
+
+    check_eq!(200, preview_response.status().as_u16());
+    check_eq!(
+        Some("application/pdf"),
+        preview_response
+            .headers()
+            .get("content-type")
+            .and_then(|v| v.to_str().ok())
+    );
+    check_eq!(
+        Some("inline; filename=\"document.pdf\""),
+        preview_response
+            .headers()
+            .get("content-disposition")
+            .and_then(|v| v.to_str().ok())
+    );
+    check_eq!("%PDF-1.7 mock", preview_response.text().await?);
+
+    app.shutdown();
+    mock_s3.shutdown();
+    mock_slack.shutdown();
+    Ok(())
+}

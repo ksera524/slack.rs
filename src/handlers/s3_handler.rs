@@ -453,5 +453,56 @@ pub async fn preview_object(
         response.headers_mut().insert(header_name, header_value);
     }
 
+    if should_force_pdf_preview(response.headers().get("content-type"), &key) {
+        response.headers_mut().insert(
+            HeaderName::from_static("content-type"),
+            HeaderValue::from_static("application/pdf"),
+        );
+
+        let file_name = sanitize_pdf_filename(&key);
+        if let Ok(content_disposition) =
+            HeaderValue::from_str(&format!("inline; filename=\"{}\"", file_name))
+        {
+            response.headers_mut().insert(
+                HeaderName::from_static("content-disposition"),
+                content_disposition,
+            );
+        }
+    }
+
     Ok(response)
+}
+
+fn should_force_pdf_preview(content_type: Option<&HeaderValue>, key: &str) -> bool {
+    let is_pdf_key = key.to_ascii_lowercase().ends_with(".pdf");
+    let is_pdf_content_type = content_type
+        .and_then(|value| value.to_str().ok())
+        .map(|value| {
+            value
+                .split(';')
+                .next()
+                .map(str::trim)
+                .is_some_and(|media_type| media_type.eq_ignore_ascii_case("application/pdf"))
+        })
+        .unwrap_or(false);
+
+    is_pdf_key || is_pdf_content_type
+}
+
+fn sanitize_pdf_filename(key: &str) -> String {
+    let candidate = key.rsplit('/').next().unwrap_or("file.pdf");
+    let mut filename = candidate
+        .chars()
+        .filter(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '.' | '_' | '-'))
+        .collect::<String>();
+
+    if filename.is_empty() {
+        filename = "file.pdf".to_string();
+    }
+
+    if !filename.to_ascii_lowercase().ends_with(".pdf") {
+        filename.push_str(".pdf");
+    }
+
+    filename
 }
