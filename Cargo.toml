@@ -1,8 +1,8 @@
 [package]
-name = "slack"
+name = "api-hub"
 version = "0.1.0"
 edition = "2024"
-default-run = "slack"
+default-run = "api-hub"
 rust-version = "1.88"
 
 # ARCとQEMU環境互換性のためのターゲット設定
@@ -37,7 +37,7 @@ proptest = "1.7.0"
 api-tests = ["tanu"]
 
 [[bin]]
-name = "slack"
+name = "api-hub"
 path = "src/main.rs"
 
 [[bin]]

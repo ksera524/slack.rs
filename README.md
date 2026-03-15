@@ -1,4 +1,4 @@
-# slack.rs
+# api-hub
 
 Slack APIとS3互換ストレージ API へのラッパーを提供するRust製APIサーバーです。
 
@@ -83,7 +83,7 @@ OpenAPI definition: `openapi.yaml`
 ## 起動
 
 ```bash
-cargo run --bin slack
+cargo run --bin api-hub
 ```
 
 ## APIテスト (tanu-rs)

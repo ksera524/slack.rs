@@ -7,9 +7,9 @@ use axum::{
 const OPENAPI_JSON: &str = r##"{
   "openapi": "3.0.3",
   "info": {
-    "title": "slack.rs API",
+    "title": "api-hub API",
     "version": "0.1.0",
-    "description": "Slack APIへの投稿・画像/PDFアップロードを提供するAPI"
+    "description": "Slack APIおよびS3互換ストレージ操作を提供するAPI"
   },
   "servers": [
     {

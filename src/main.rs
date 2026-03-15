@@ -1,4 +1,4 @@
-use slack::{app, config, logging};
+use api_hub::{app, config, logging};
 use std::net::SocketAddr;
 use tracing::{error, info, info_span};
 
@@ -10,13 +10,13 @@ async fn main() {
 
     let main_span = info_span!(
         "application",
-        service = "slack-rs",
+        service = "api-hub",
         version = env!("CARGO_PKG_VERSION")
     );
     let _enter = main_span.enter();
 
     info!(
-        service = "slack-rs",
+        service = "api-hub",
         version = env!("CARGO_PKG_VERSION"),
         "Starting application"
     );

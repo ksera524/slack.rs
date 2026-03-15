@@ -140,6 +140,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "api-hub"
+version = "0.1.0"
+dependencies = [
+ "axum",
+ "base64",
+ "nojson",
+ "proptest",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "shiguredo_s3",
+ "tanu",
+ "tokio",
+ "tower-http",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
 name = "async-trait"
 version = "0.1.89"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2886,25 +2905,6 @@ name = "slab"
 version = "0.4.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "04dc19736151f35336d325007ac991178d504a119863a2fcb3758cdb5e52c50d"
-
-[[package]]
-name = "slack"
-version = "0.1.0"
-dependencies = [
- "axum",
- "base64",
- "nojson",
- "proptest",
- "reqwest",
- "serde",
- "serde_json",
- "shiguredo_s3",
- "tanu",
- "tokio",
- "tower-http",
- "tracing",
- "tracing-subscriber",
-]
 
 [[package]]
 name = "smallvec"

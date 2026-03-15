@@ -97,7 +97,7 @@ time jq 'select(.level == "ERROR")' large.jsonl
 ```bash
 #!/bin/bash
 # リアルタイムエラー監視
-tail -f /var/log/slack-rs/app.log | \
+tail -f /var/log/api-hub/app.log | \
   jq -r 'select(.level == "ERROR") | "\(.timestamp) [\(.level)] \(.message)"' | \
   while read line; do
     echo "$line" | mail -s "Application Error" admin@company.com
@@ -108,7 +108,7 @@ tail -f /var/log/slack-rs/app.log | \
 ```bash
 #!/bin/bash
 # 日次パフォーマンスレポート
-cat /var/log/slack-rs/app-$(date +%Y%m%d).log | \
+cat /var/log/api-hub/app-$(date +%Y%m%d).log | \
   jq -s '
     map(select(.duration_ms)) |
     {
@@ -136,7 +136,7 @@ cat /var/log/slack-rs/app-$(date +%Y%m%d).log | \
 
 ### logrotateの設定
 ```
-/var/log/slack-rs/*.log {
+/var/log/api-hub/*.log {
     daily
     rotate 7
     compress
@@ -154,13 +154,13 @@ cat /var/log/slack-rs/app-$(date +%Y%m%d).log | \
 ```bash
 #!/bin/bash
 # 新しいログ行のみ処理
-last_processed=$(cat /var/lib/slack-rs/last_line_count 2>/dev/null || echo 0)
-current_lines=$(wc -l < /var/log/slack-rs/app.log)
+last_processed=$(cat /var/lib/api-hub/last_line_count 2>/dev/null || echo 0)
+current_lines=$(wc -l < /var/log/api-hub/app.log)
 
 if [ $current_lines -gt $last_processed ]; then
-    tail -n +$((last_processed + 1)) /var/log/slack-rs/app.log | \
-      jq 'select(.level == "ERROR")' >> /var/log/slack-rs/errors.jsonl
-    echo $current_lines > /var/lib/slack-rs/last_line_count
+    tail -n +$((last_processed + 1)) /var/log/api-hub/app.log | \
+      jq 'select(.level == "ERROR")' >> /var/log/api-hub/errors.jsonl
+    echo $current_lines > /var/lib/api-hub/last_line_count
 fi
 ```
 

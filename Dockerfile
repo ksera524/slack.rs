@@ -14,7 +14,7 @@ COPY Cargo.toml Cargo.lock ./
 # Create a dummy main.rs to build dependencies
 RUN mkdir -p src && \
     echo "fn main() {}" > src/main.rs && \
-    cargo build --release --bin slack && \
+    cargo build --release --bin api-hub && \
     rm -rf src
 
 # Copy the actual source code
@@ -26,7 +26,7 @@ ENV RUSTFLAGS=${RUSTFLAGS}
 
 # Build the application with CPU compatibility
 RUN echo "Building with RUSTFLAGS: $RUSTFLAGS" && \
-    cargo build --release --bin slack
+    cargo build --release --bin api-hub
 
 # Runtime stage
 FROM debian:bookworm-slim
@@ -39,11 +39,11 @@ RUN apt-get update && \
     rm -rf /var/lib/apt/lists/*
 
 # Copy the binary from the builder stage
-COPY --from=builder /usr/src/app/target/release/slack /app/slack
+COPY --from=builder /usr/src/app/target/release/api-hub /app/api-hub
 
 # Expose the port your application listens on
 EXPOSE 3000
 
-RUN chmod +x /app/slack
+RUN chmod +x /app/api-hub
 # Run the application
-CMD ["./slack"]
+CMD ["./api-hub"]

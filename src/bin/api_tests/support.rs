@@ -6,7 +6,7 @@ use axum::{
 };
 use base64::Engine;
 use serde_json::{Value, json};
-use slack::{
+use api_hub::{
     app,
     config::{settings::Settings, state::AppState},
 };

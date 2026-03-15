@@ -1,6 +1,6 @@
 openapi: 3.1.0
 info:
-  title: slack.rs Wrapper API
+  title: api-hub Wrapper API
   version: 0.1.0
   description: |
     Wrapper API for Slack and S3-compatible storage.
