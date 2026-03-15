@@ -40,7 +40,7 @@ jobs:
   push-image:
     if: github.event_name == 'push'
     needs: build-image
-    runs-on: slack-rs-runners
+    runs-on: api-hub-runners
 
     steps:
     - name: Download image artifact
@@ -116,8 +116,12 @@ jobs:
           kubectl rollout restart deployment/api-hub -n sandbox
           kubectl rollout status deployment/api-hub -n sandbox --timeout=180s
           echo "✅ Restarted deployment/api-hub"
+        elif [[ "api-hub" != "api-hub" ]] && kubectl get deployment api-hub -n sandbox >/dev/null 2>&1; then
+          kubectl rollout restart deployment/api-hub -n sandbox
+          kubectl rollout status deployment/api-hub -n sandbox --timeout=180s
+          echo "✅ Restarted deployment/api-hub (legacy fallback)"
         else
-          echo "ℹ️ deployment/api-hub は存在しないため再起動をスキップします"
+          echo "ℹ️ deployment/api-hub および deployment/api-hub は存在しないため再起動をスキップします"
         fi
 
     - name: Cleanup
