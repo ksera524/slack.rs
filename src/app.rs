@@ -5,7 +5,7 @@ use crate::middleware::{
     problem_details::problem_details_middleware, request_tracing::request_tracing_middleware,
 };
 use crate::routes;
-use axum::{extract::DefaultBodyLimit, middleware, routing::get, Router};
+use axum::{Router, extract::DefaultBodyLimit, middleware, routing::get};
 
 pub fn create_app(app_state: AppState) -> Router {
     Router::new()

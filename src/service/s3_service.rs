@@ -20,6 +20,11 @@ pub struct GetObjectInput {
     pub key: String,
 }
 
+pub struct ProxyObjectInput {
+    pub bucket: String,
+    pub key: String,
+}
+
 pub struct HeadObjectInput {
     pub bucket: String,
     pub key: String,
@@ -159,6 +164,21 @@ pub async fn get_object(
         "version_id": output.version_id,
         "metadata": output.metadata,
     }))
+}
+
+pub async fn get_object_proxy(
+    http_client: &Client,
+    settings: &Settings,
+    input: ProxyObjectInput,
+) -> Result<S3Response, ApiError> {
+    let s3 = create_s3_client(settings)?;
+    let request = s3
+        .get_object()
+        .bucket(input.bucket)
+        .key(input.key)
+        .build_request()
+        .map_err(map_s3_input_error_to_api_error)?;
+    execute_s3(http_client, request).await
 }
 
 pub async fn head_object(

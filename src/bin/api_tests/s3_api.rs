@@ -128,3 +128,70 @@ async fn s3_put_object_base64_invalid_returns_400() -> eyre::Result<()> {
     mock_slack.shutdown();
     Ok(())
 }
+
+#[tanu::test]
+async fn s3_preview_object_ok() -> eyre::Result<()> {
+    let mock_slack = support::start_mock_slack().await?;
+    let mock_s3 = support::start_mock_s3().await?;
+    let app = support::start_app(mock_slack.base_url.clone(), mock_s3.base_url.clone()).await?;
+
+    let client = Client::new();
+    let file_data_base64 = support::encode_base64(b"preview-data");
+
+    let _ = client
+        .post(format!("{}/s3/put_object_base64", app.base_url))
+        .json(&json!({
+            "bucket": "team-a",
+            "key": "preview/image.png",
+            "file_data_base64": file_data_base64,
+            "content_type": "image/png"
+        }))
+        .send()
+        .await?;
+
+    let preview_response = client
+        .get(format!(
+            "{}/s3/preview/team-a/preview/image.png",
+            app.base_url
+        ))
+        .send()
+        .await?;
+
+    check_eq!(200, preview_response.status().as_u16());
+    check_eq!(
+        Some("image/png"),
+        preview_response
+            .headers()
+            .get("content-type")
+            .and_then(|v| v.to_str().ok())
+    );
+    check_eq!("preview-data", preview_response.text().await?);
+
+    app.shutdown();
+    mock_s3.shutdown();
+    mock_slack.shutdown();
+    Ok(())
+}
+
+#[tanu::test]
+async fn s3_preview_object_not_found() -> eyre::Result<()> {
+    let mock_slack = support::start_mock_slack().await?;
+    let mock_s3 = support::start_mock_s3().await?;
+    let app = support::start_app(mock_slack.base_url.clone(), mock_s3.base_url.clone()).await?;
+
+    let client = Client::new();
+    let preview_response = client
+        .get(format!(
+            "{}/s3/preview/team-a/missing/file.png",
+            app.base_url
+        ))
+        .send()
+        .await?;
+
+    check_eq!(404, preview_response.status().as_u16());
+
+    app.shutdown();
+    mock_s3.shutdown();
+    mock_slack.shutdown();
+    Ok(())
+}

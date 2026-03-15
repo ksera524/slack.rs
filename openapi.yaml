@@ -80,6 +80,34 @@ paths:
         default:
           $ref: '#/components/responses/ProblemDetails'
 
+  /s3/preview/{bucket}/{key}:
+    get:
+      operationId: s3PreviewObject
+      summary: Proxy object preview through API server
+      parameters:
+        - name: bucket
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: key
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Object stream
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        '404':
+          description: Object not found
+        default:
+          $ref: '#/components/responses/ProblemDetails'
+
   /s3/get_object_base64:
     post:
       operationId: s3GetObjectBase64

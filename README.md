@@ -20,6 +20,8 @@ OpenAPI definition: `openapi.yaml`
   - body: PDFバイナリ
 - `POST /s3/put_object_base64`
   - body: `{ "bucket": "b", "key": "path/a.txt", "file_data_base64": "...", "content_type": "text/plain" }`
+- `GET /s3/preview/{bucket}/{*key}`
+  - body: なし（S3オブジェクトをプロキシ配信）
 - `POST /s3/get_object_base64`
   - body: `{ "bucket": "b", "key": "path/a.txt" }`
 - `POST /s3/head_object`

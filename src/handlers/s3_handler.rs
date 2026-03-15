@@ -1,4 +1,10 @@
-use axum::{extract::State, Json};
+use axum::{
+    Json,
+    body::Body,
+    extract::{Path, State},
+    http::{HeaderName, HeaderValue, StatusCode},
+    response::Response,
+};
 use serde::Deserialize;
 use serde_json::Value;
 
@@ -9,7 +15,8 @@ use crate::{
         self, AbortMultipartUploadInput, CompleteMultipartUploadInput, CompletePartInput,
         CreateBucketInput, CreateMultipartUploadInput, DeleteBucketInput, DeleteObjectInput,
         GetObjectInput, HeadBucketInput, HeadObjectInput, ListMultipartUploadsInput,
-        ListObjectsV2Input, ListPartsInput, PresignedObjectInput, PutObjectInput, UploadPartInput,
+        ListObjectsV2Input, ListPartsInput, PresignedObjectInput, ProxyObjectInput, PutObjectInput,
+        UploadPartInput,
     },
 };
 
@@ -402,4 +409,49 @@ pub async fn delete_bucket(
     )
     .await?;
     Ok(Json(result))
+}
+
+pub async fn preview_object(
+    State(app_state): State<AppState>,
+    Path((bucket, key)): Path<(String, String)>,
+) -> Result<Response, ApiError> {
+    let s3_response = s3_service::get_object_proxy(
+        &app_state.client,
+        &app_state.settings,
+        ProxyObjectInput { bucket, key },
+    )
+    .await?;
+
+    let mut response = Response::new(Body::from(s3_response.body));
+    *response.status_mut() =
+        StatusCode::from_u16(s3_response.status_code).unwrap_or(StatusCode::BAD_GATEWAY);
+
+    let pass_through_headers = [
+        "content-type",
+        "content-length",
+        "etag",
+        "last-modified",
+        "cache-control",
+        "content-range",
+        "accept-ranges",
+    ];
+
+    for (name, value) in s3_response.headers {
+        if !pass_through_headers
+            .iter()
+            .any(|allowed| name.eq_ignore_ascii_case(allowed))
+        {
+            continue;
+        }
+
+        let Ok(header_name) = HeaderName::from_bytes(name.as_bytes()) else {
+            continue;
+        };
+        let Ok(header_value) = HeaderValue::from_str(&value) else {
+            continue;
+        };
+        response.headers_mut().insert(header_name, header_value);
+    }
+
+    Ok(response)
 }
