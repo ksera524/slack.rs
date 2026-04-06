@@ -1,0 +1,12 @@
+.git
+.github
+target
+
+# Local tooling
+.idea
+.vscode
+
+# Optional local files
+*.log
+*.tmp
+*.swp

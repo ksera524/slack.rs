@@ -86,29 +86,12 @@ OpenAPI definition: `openapi.yaml`
 cargo run --bin api-hub
 ```
 
-## APIテスト (tanu-rs)
-
-MockのSlack APIを起動してテストします。外部Slackへの通信は行いません。
-
-`api-tests` feature を使う場合、ローカル環境では OpenSSL 開発パッケージが必要です。
+## テスト
 
 ```bash
-sudo apt-get update
-sudo apt-get install -y pkg-config libssl-dev
-```
-
-Nix 環境では以下のように OpenSSL の pkg-config / 実行時ライブラリパスを指定して実行します。
-
-```bash
-PKG_CONFIG_PATH="/nix/store/<openssl-dev>/lib/pkgconfig" \
-LD_LIBRARY_PATH="/nix/store/<openssl>/lib" \
-cargo run --bin api_tests --features api-tests -- test
-```
-
-```bash
-cargo run --bin api_tests --features api-tests -- test
+cargo test --all-targets
 ```
 
 ## CI
 
-GitHub Actionsで `cargo run --bin api_tests --features api-tests -- test` を実行します。
+GitHub Actionsで `cargo test --all-targets` を実行します。
