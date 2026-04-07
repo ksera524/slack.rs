@@ -1,10 +1,4 @@
-use axum::{
-    Json,
-    body::Bytes,
-    extract::{RawQuery, State},
-    http::{HeaderMap, header::CONTENT_TYPE},
-    response::IntoResponse,
-};
+use shiguredo_http11::Response;
 use shiguredo_http11::uri::percent_decode;
 use std::time::Instant;
 use tracing::{debug, error, info, instrument, warn};
@@ -81,12 +75,17 @@ fn decode_query_component(value: &str) -> Result<String, ApiError> {
     percent_decode(&replaced).map_err(|_| ApiError::BadRequest("Invalid query string".to_string()))
 }
 
-fn content_type(headers: &HeaderMap) -> Result<String, ApiError> {
-    let content_type = headers
-        .get(CONTENT_TYPE)
+fn header_value<'a>(headers: &'a [(String, String)], name: &str) -> Option<&'a str> {
+    headers
+        .iter()
+        .find(|(header_name, _)| header_name.eq_ignore_ascii_case(name))
+        .map(|(_, value)| value.as_str())
+}
+
+fn content_type(headers: &[(String, String)]) -> Result<String, ApiError> {
+    let content_type = header_value(headers, "content-type")
         .ok_or_else(|| ApiError::BadRequest("Missing Content-Type header".to_string()))?
-        .to_str()
-        .map_err(|_| ApiError::BadRequest("Invalid Content-Type header".to_string()))?;
+        .trim();
 
     let normalized = content_type
         .split(';')
@@ -176,11 +175,17 @@ fn validate_file_not_empty(file_data: &[u8]) -> Result<(), ApiError> {
     Ok(())
 }
 
-#[instrument(skip(app_state, body), fields(request_id = tracing::field::Empty))]
-pub async fn post_message(
-    State(app_state): State<AppState>,
-    body: String,
-) -> Result<Json<String>, ApiError> {
+fn json_string_response(value: String) -> Response {
+    let body = nojson::json(|f| f.value(&value)).to_string();
+    Response::new(200, "OK")
+        .header("Content-Type", "application/json")
+        .body(body.into_bytes())
+}
+
+#[instrument(skip(app_state, body))]
+pub async fn post_message(app_state: &AppState, body: &[u8]) -> Result<Response, ApiError> {
+    let body = String::from_utf8(body.to_vec())
+        .map_err(|_| ApiError::BadRequest("Request body must be valid UTF-8".to_string()))?;
     let payload = parse_message_request(&body)?;
 
     debug!(
@@ -215,20 +220,20 @@ pub async fn post_message(
         "Successfully posted message to Slack"
     );
 
-    Ok(Json(response_text))
+    Ok(json_string_response(response_text))
 }
 
-#[instrument(skip(app_state, headers, body), fields(request_id = tracing::field::Empty))]
+#[instrument(skip(app_state, headers, body))]
 pub async fn upload_image_raw(
-    State(app_state): State<AppState>,
-    RawQuery(raw_query): RawQuery,
-    headers: HeaderMap,
-    body: Bytes,
-) -> Result<impl IntoResponse, ApiError> {
-    let payload = parse_upload_query(raw_query.as_deref())?;
+    app_state: &AppState,
+    raw_query: Option<&str>,
+    headers: &[(String, String)],
+    body: &[u8],
+) -> Result<Response, ApiError> {
+    let payload = parse_upload_query(raw_query)?;
     let content_type = content_type(&headers)?;
-    validate_file_not_empty(&body)?;
-    let extension = ensure_image_content(&content_type, &body)?;
+    validate_file_not_empty(body)?;
+    let extension = ensure_image_content(&content_type, body)?;
     let file_name = payload
         .file_name
         .unwrap_or_else(|| build_default_name("image-upload", extension));
@@ -247,7 +252,7 @@ pub async fn upload_image_raw(
         &app_state.client,
         &app_state.settings.slack_bot_token,
         &app_state.settings.slack_api_base_url,
-        &body,
+        body,
         &file_name,
         &payload.channel,
     )
@@ -271,19 +276,19 @@ pub async fn upload_image_raw(
         "Successfully uploaded image to Slack"
     );
 
-    Ok(Json(response_text))
+    Ok(json_string_response(response_text))
 }
 
-#[instrument(skip(app_state, headers, body), fields(request_id = tracing::field::Empty))]
+#[instrument(skip(app_state, headers, body))]
 pub async fn upload_pdf_raw(
-    State(app_state): State<AppState>,
-    RawQuery(raw_query): RawQuery,
-    headers: HeaderMap,
-    body: Bytes,
-) -> Result<impl IntoResponse, ApiError> {
-    let payload = parse_upload_query(raw_query.as_deref())?;
+    app_state: &AppState,
+    raw_query: Option<&str>,
+    headers: &[(String, String)],
+    body: &[u8],
+) -> Result<Response, ApiError> {
+    let payload = parse_upload_query(raw_query)?;
     let content_type = content_type(&headers)?;
-    validate_file_not_empty(&body)?;
+    validate_file_not_empty(body)?;
 
     if content_type != "application/pdf" {
         return Err(ApiError::BadRequest(
@@ -291,7 +296,7 @@ pub async fn upload_pdf_raw(
         ));
     }
 
-    if !looks_like_pdf(&body) {
+    if !looks_like_pdf(body) {
         warn!(channel = %payload.channel, "PDF signature check failed");
         return Err(ApiError::BadRequest(
             "Body is not a valid PDF document".to_string(),
@@ -315,7 +320,7 @@ pub async fn upload_pdf_raw(
         &app_state.client,
         &app_state.settings.slack_bot_token,
         &app_state.settings.slack_api_base_url,
-        &body,
+        body,
         &file_name,
         &payload.channel,
     )
@@ -339,5 +344,5 @@ pub async fn upload_pdf_raw(
         "Successfully uploaded PDF to Slack"
     );
 
-    Ok(Json(response_text))
+    Ok(json_string_response(response_text))
 }

@@ -1,9 +1,4 @@
-use axum::{
-    body::Body,
-    extract::{Path, State},
-    http::{HeaderName, HeaderValue, StatusCode, header::CONTENT_TYPE},
-    response::Response,
-};
+use shiguredo_http11::Response;
 
 use crate::{
     config::state::AppState,
@@ -111,6 +106,11 @@ fn parse_json_body(body: &str) -> Result<nojson::RawJson<'_>, ApiError> {
     nojson::RawJson::parse(body).map_err(|e| ApiError::BadRequest(format!("Invalid JSON: {e}")))
 }
 
+fn body_to_utf8(body: &[u8]) -> Result<String, ApiError> {
+    String::from_utf8(body.to_vec())
+        .map_err(|_| ApiError::BadRequest("Request body must be valid UTF-8".to_string()))
+}
+
 fn get_required_string(root: nojson::RawJsonValue<'_, '_>, name: &str) -> Result<String, ApiError> {
     root.to_member(name)
         .map_err(|e| ApiError::BadRequest(e.to_string()))?
@@ -169,12 +169,9 @@ fn get_optional_u64(
 }
 
 fn json_response(body: String) -> Response {
-    let mut response = Response::new(Body::from(body));
-    *response.status_mut() = StatusCode::OK;
-    response
-        .headers_mut()
-        .insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
-    response
+    Response::new(200, "OK")
+        .header("Content-Type", "application/json")
+        .body(body.into_bytes())
 }
 
 fn parse_put_object_base64_request(body: &str) -> Result<PutObjectBase64Request, ApiError> {
@@ -348,10 +345,8 @@ fn parse_bucket_request(body: &str) -> Result<BucketRequest, ApiError> {
     })
 }
 
-pub async fn put_object_base64(
-    State(app_state): State<AppState>,
-    body: String,
-) -> Result<Response, ApiError> {
+pub async fn put_object_base64(app_state: &AppState, body: &[u8]) -> Result<Response, ApiError> {
+    let body = body_to_utf8(body)?;
     let payload = parse_put_object_base64_request(&body)?;
     let body = s3_service::decode_base64_payload(&payload.file_data_base64)?;
     let result = s3_service::put_object(
@@ -368,10 +363,8 @@ pub async fn put_object_base64(
     Ok(json_response(result))
 }
 
-pub async fn get_object_base64(
-    State(app_state): State<AppState>,
-    body: String,
-) -> Result<Response, ApiError> {
+pub async fn get_object_base64(app_state: &AppState, body: &[u8]) -> Result<Response, ApiError> {
+    let body = body_to_utf8(body)?;
     let payload = parse_get_object_request(&body)?;
     let result = s3_service::get_object(
         &app_state.client,
@@ -385,10 +378,8 @@ pub async fn get_object_base64(
     Ok(json_response(result))
 }
 
-pub async fn head_object(
-    State(app_state): State<AppState>,
-    body: String,
-) -> Result<Response, ApiError> {
+pub async fn head_object(app_state: &AppState, body: &[u8]) -> Result<Response, ApiError> {
+    let body = body_to_utf8(body)?;
     let payload = parse_head_object_request(&body)?;
     let result = s3_service::head_object(
         &app_state.client,
@@ -402,10 +393,8 @@ pub async fn head_object(
     Ok(json_response(result))
 }
 
-pub async fn delete_object(
-    State(app_state): State<AppState>,
-    body: String,
-) -> Result<Response, ApiError> {
+pub async fn delete_object(app_state: &AppState, body: &[u8]) -> Result<Response, ApiError> {
+    let body = body_to_utf8(body)?;
     let payload = parse_delete_object_request(&body)?;
     let result = s3_service::delete_object(
         &app_state.client,
@@ -419,10 +408,8 @@ pub async fn delete_object(
     Ok(json_response(result))
 }
 
-pub async fn list_objects_v2(
-    State(app_state): State<AppState>,
-    body: String,
-) -> Result<Response, ApiError> {
+pub async fn list_objects_v2(app_state: &AppState, body: &[u8]) -> Result<Response, ApiError> {
+    let body = body_to_utf8(body)?;
     let payload = parse_list_objects_v2_request(&body)?;
     let result = s3_service::list_objects_v2(
         &app_state.client,
@@ -441,9 +428,10 @@ pub async fn list_objects_v2(
 }
 
 pub async fn create_multipart_upload(
-    State(app_state): State<AppState>,
-    body: String,
+    app_state: &AppState,
+    body: &[u8],
 ) -> Result<Response, ApiError> {
+    let body = body_to_utf8(body)?;
     let payload = parse_create_multipart_upload_request(&body)?;
     let result = s3_service::create_multipart_upload(
         &app_state.client,
@@ -458,10 +446,8 @@ pub async fn create_multipart_upload(
     Ok(json_response(result))
 }
 
-pub async fn upload_part_base64(
-    State(app_state): State<AppState>,
-    body: String,
-) -> Result<Response, ApiError> {
+pub async fn upload_part_base64(app_state: &AppState, body: &[u8]) -> Result<Response, ApiError> {
+    let body = body_to_utf8(body)?;
     let payload = parse_upload_part_base64_request(&body)?;
     let body = s3_service::decode_base64_payload(&payload.part_data_base64)?;
     let result = s3_service::upload_part(
@@ -480,9 +466,10 @@ pub async fn upload_part_base64(
 }
 
 pub async fn complete_multipart_upload(
-    State(app_state): State<AppState>,
-    body: String,
+    app_state: &AppState,
+    body: &[u8],
 ) -> Result<Response, ApiError> {
+    let body = body_to_utf8(body)?;
     let payload = parse_complete_multipart_upload_request(&body)?;
     let parts = payload
         .parts
@@ -508,9 +495,10 @@ pub async fn complete_multipart_upload(
 }
 
 pub async fn abort_multipart_upload(
-    State(app_state): State<AppState>,
-    body: String,
+    app_state: &AppState,
+    body: &[u8],
 ) -> Result<Response, ApiError> {
+    let body = body_to_utf8(body)?;
     let payload = parse_abort_multipart_upload_request(&body)?;
     let result = s3_service::abort_multipart_upload(
         &app_state.client,
@@ -525,10 +513,8 @@ pub async fn abort_multipart_upload(
     Ok(json_response(result))
 }
 
-pub async fn list_parts(
-    State(app_state): State<AppState>,
-    body: String,
-) -> Result<Response, ApiError> {
+pub async fn list_parts(app_state: &AppState, body: &[u8]) -> Result<Response, ApiError> {
+    let body = body_to_utf8(body)?;
     let payload = parse_list_parts_request(&body)?;
     let result = s3_service::list_parts(
         &app_state.client,
@@ -546,9 +532,10 @@ pub async fn list_parts(
 }
 
 pub async fn list_multipart_uploads(
-    State(app_state): State<AppState>,
-    body: String,
+    app_state: &AppState,
+    body: &[u8],
 ) -> Result<Response, ApiError> {
+    let body = body_to_utf8(body)?;
     let payload = parse_list_multipart_uploads_request(&body)?;
     let result = s3_service::list_multipart_uploads(
         &app_state.client,
@@ -566,10 +553,8 @@ pub async fn list_multipart_uploads(
     Ok(json_response(result))
 }
 
-pub async fn presigned_get_object(
-    State(app_state): State<AppState>,
-    body: String,
-) -> Result<Response, ApiError> {
+pub async fn presigned_get_object(app_state: &AppState, body: &[u8]) -> Result<Response, ApiError> {
+    let body = body_to_utf8(body)?;
     let payload = parse_presigned_object_request(&body)?;
     let result = s3_service::presigned_get(
         &app_state.settings,
@@ -582,10 +567,8 @@ pub async fn presigned_get_object(
     Ok(json_response(result))
 }
 
-pub async fn presigned_put_object(
-    State(app_state): State<AppState>,
-    body: String,
-) -> Result<Response, ApiError> {
+pub async fn presigned_put_object(app_state: &AppState, body: &[u8]) -> Result<Response, ApiError> {
+    let body = body_to_utf8(body)?;
     let payload = parse_presigned_object_request(&body)?;
     let result = s3_service::presigned_put(
         &app_state.settings,
@@ -598,15 +581,13 @@ pub async fn presigned_put_object(
     Ok(json_response(result))
 }
 
-pub async fn list_buckets(State(app_state): State<AppState>) -> Result<Response, ApiError> {
+pub async fn list_buckets(app_state: &AppState) -> Result<Response, ApiError> {
     let result = s3_service::list_buckets(&app_state.client, &app_state.settings).await?;
     Ok(json_response(result))
 }
 
-pub async fn create_bucket(
-    State(app_state): State<AppState>,
-    body: String,
-) -> Result<Response, ApiError> {
+pub async fn create_bucket(app_state: &AppState, body: &[u8]) -> Result<Response, ApiError> {
+    let body = body_to_utf8(body)?;
     let payload = parse_bucket_request(&body)?;
     let result = s3_service::create_bucket(
         &app_state.client,
@@ -619,10 +600,8 @@ pub async fn create_bucket(
     Ok(json_response(result))
 }
 
-pub async fn head_bucket(
-    State(app_state): State<AppState>,
-    body: String,
-) -> Result<Response, ApiError> {
+pub async fn head_bucket(app_state: &AppState, body: &[u8]) -> Result<Response, ApiError> {
+    let body = body_to_utf8(body)?;
     let payload = parse_bucket_request(&body)?;
     let result = s3_service::head_bucket(
         &app_state.client,
@@ -635,10 +614,8 @@ pub async fn head_bucket(
     Ok(json_response(result))
 }
 
-pub async fn delete_bucket(
-    State(app_state): State<AppState>,
-    body: String,
-) -> Result<Response, ApiError> {
+pub async fn delete_bucket(app_state: &AppState, body: &[u8]) -> Result<Response, ApiError> {
+    let body = body_to_utf8(body)?;
     let payload = parse_bucket_request(&body)?;
     let result = s3_service::delete_bucket(
         &app_state.client,
@@ -652,8 +629,9 @@ pub async fn delete_bucket(
 }
 
 pub async fn preview_object(
-    State(app_state): State<AppState>,
-    Path((bucket, key)): Path<(String, String)>,
+    app_state: &AppState,
+    bucket: String,
+    key: String,
 ) -> Result<Response, ApiError> {
     let s3_response = s3_service::get_object_proxy(
         &app_state.client,
@@ -665,9 +643,11 @@ pub async fn preview_object(
     )
     .await?;
 
-    let mut response = Response::new(Body::from(s3_response.body));
-    *response.status_mut() =
-        StatusCode::from_u16(s3_response.status_code).unwrap_or(StatusCode::BAD_GATEWAY);
+    let mut response = Response::new(
+        s3_response.status_code,
+        response_reason(s3_response.status_code),
+    )
+    .body(s3_response.body);
 
     let pass_through_headers = [
         "content-type",
@@ -687,39 +667,28 @@ pub async fn preview_object(
             continue;
         }
 
-        let Ok(header_name) = HeaderName::from_bytes(name.as_bytes()) else {
+        if !is_valid_header_name(&name) || !is_valid_header_value(&value) {
             continue;
-        };
-        let Ok(header_value) = HeaderValue::from_str(&value) else {
-            continue;
-        };
-        response.headers_mut().insert(header_name, header_value);
+        }
+        response.add_header(&name, &value);
     }
 
-    if should_force_pdf_preview(response.headers().get("content-type"), &key) {
-        response.headers_mut().insert(
-            HeaderName::from_static("content-type"),
-            HeaderValue::from_static("application/pdf"),
-        );
+    if should_force_pdf_preview(response.get_header("content-type"), &key) {
+        response.add_header("Content-Type", "application/pdf");
 
         let file_name = sanitize_pdf_filename(&key);
-        if let Ok(content_disposition) =
-            HeaderValue::from_str(&format!("inline; filename=\"{}\"", file_name))
-        {
-            response.headers_mut().insert(
-                HeaderName::from_static("content-disposition"),
-                content_disposition,
-            );
-        }
+        response.add_header(
+            "Content-Disposition",
+            &format!("inline; filename=\"{}\"", file_name),
+        );
     }
 
     Ok(response)
 }
 
-fn should_force_pdf_preview(content_type: Option<&HeaderValue>, key: &str) -> bool {
+fn should_force_pdf_preview(content_type: Option<&str>, key: &str) -> bool {
     let is_pdf_key = key.to_ascii_lowercase().ends_with(".pdf");
     let is_pdf_content_type = content_type
-        .and_then(|value| value.to_str().ok())
         .map(|value| {
             value
                 .split(';')
@@ -730,6 +699,49 @@ fn should_force_pdf_preview(content_type: Option<&HeaderValue>, key: &str) -> bo
         .unwrap_or(false);
 
     is_pdf_key || is_pdf_content_type
+}
+
+fn response_reason(status_code: u16) -> &'static str {
+    match status_code {
+        200 => "OK",
+        206 => "Partial Content",
+        304 => "Not Modified",
+        400 => "Bad Request",
+        403 => "Forbidden",
+        404 => "Not Found",
+        416 => "Range Not Satisfiable",
+        500 => "Internal Server Error",
+        502 => "Bad Gateway",
+        _ => "OK",
+    }
+}
+
+fn is_valid_header_name(name: &str) -> bool {
+    !name.is_empty()
+        && name.bytes().all(|b| {
+            b.is_ascii_alphanumeric()
+                || matches!(
+                    b,
+                    b'!' | b'#'
+                        | b'$'
+                        | b'%'
+                        | b'&'
+                        | b'\''
+                        | b'*'
+                        | b'+'
+                        | b'-'
+                        | b'.'
+                        | b'^'
+                        | b'_'
+                        | b'`'
+                        | b'|'
+                        | b'~'
+                )
+        })
+}
+
+fn is_valid_header_value(value: &str) -> bool {
+    !value.bytes().any(|b| b == b'\r' || b == b'\n' || b == 0)
 }
 
 fn sanitize_pdf_filename(key: &str) -> String {
@@ -748,4 +760,8 @@ fn sanitize_pdf_filename(key: &str) -> String {
     }
 
     filename
+}
+
+pub fn s3_preflight() -> Response {
+    Response::new(204, "No Content")
 }

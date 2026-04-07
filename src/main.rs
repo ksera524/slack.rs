@@ -1,6 +1,6 @@
-use api_hub::{app, config, logging};
+use api_hub::{config, logging, server};
 use std::net::SocketAddr;
-use tracing::{error, info, info_span};
+use tracing::{error, info, info_span, warn};
 
 #[tokio::main(flavor = "multi_thread", worker_threads = 2)]
 async fn main() {
@@ -40,8 +40,6 @@ async fn main() {
 
     let app_state = config::state::AppState { settings, client };
 
-    let app = app::create_app(app_state);
-
     let addr = SocketAddr::from(([0, 0, 0, 0], 3000));
 
     info!(
@@ -68,19 +66,36 @@ async fn main() {
         "Server successfully bound to address"
     );
 
-    // ARC/DinD環境対応: Graceful shutdown with signal handling
-    // Hyperのボディサイズ制限も解除
-    let server = axum::serve(listener, app).with_graceful_shutdown(shutdown_signal());
+    let mut shutdown = std::pin::pin!(shutdown_signal());
 
-    if let Err(e) = server.await {
-        error!(
-            error = %e,
-            "Server error occurred"
-        );
-        std::process::exit(1);
+    loop {
+        tokio::select! {
+            _ = &mut shutdown => {
+                info!("Shutdown signal received, stopping accept loop");
+                break;
+            }
+            accepted = listener.accept() => {
+                match accepted {
+                    Ok((stream, peer_addr)) => {
+                        let state = app_state.clone();
+                        tokio::spawn(async move {
+                            server::handle_connection(stream, state).await;
+                            debug_connection_closed(peer_addr);
+                        });
+                    }
+                    Err(e) => {
+                        warn!(error = %e, "Failed to accept incoming connection");
+                    }
+                }
+            }
+        }
     }
 
     info!("Server shutdown complete");
+}
+
+fn debug_connection_closed(peer_addr: SocketAddr) {
+    tracing::debug!(peer = %peer_addr, "Connection closed");
 }
 
 async fn shutdown_signal() {
