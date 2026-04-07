@@ -2,6 +2,7 @@ use crate::config::state::AppState;
 use crate::errors::api_error::{ApiError, reason_phrase};
 use crate::handlers::{health_handler, openapi_handler, s3_handler, slack_handler};
 use crate::request_id;
+use shiguredo_http11::uri::percent_decode;
 use shiguredo_http11::{Request, RequestDecoder, Response};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
@@ -277,8 +278,12 @@ async fn route_request(
         let remaining = &path["/s3/preview/".len()..];
         if let Some((bucket, key)) = remaining.split_once('/') {
             if !bucket.is_empty() && !key.is_empty() {
-                return s3_handler::preview_object(app_state, bucket.to_string(), key.to_string())
-                    .await;
+                let decoded_bucket = percent_decode(bucket)
+                    .map_err(|_| ApiError::BadRequest("Invalid preview path".to_string()))?;
+                let decoded_key = percent_decode(key)
+                    .map_err(|_| ApiError::BadRequest("Invalid preview path".to_string()))?;
+
+                return s3_handler::preview_object(app_state, decoded_bucket, decoded_key).await;
             }
         }
     }
