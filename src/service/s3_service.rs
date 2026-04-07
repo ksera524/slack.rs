@@ -42,7 +42,6 @@ pub struct ListObjectsV2Input {
     pub prefix: Option<String>,
     pub delimiter: Option<String>,
     pub max_keys: Option<i32>,
-    pub continuation_token: Option<String>,
     pub start_after: Option<String>,
 }
 
@@ -258,9 +257,6 @@ pub async fn list_objects_v2(
     }
     if let Some(max_keys) = input.max_keys {
         req = req.max_keys(max_keys);
-    }
-    if let Some(continuation_token) = input.continuation_token {
-        req = req.continuation_token(continuation_token);
     }
     if let Some(start_after) = input.start_after {
         req = req.start_after(start_after);

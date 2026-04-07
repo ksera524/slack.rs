@@ -39,7 +39,6 @@ pub struct ListObjectsV2Request {
     pub prefix: Option<String>,
     pub delimiter: Option<String>,
     pub max_keys: Option<i32>,
-    pub continuation_token: Option<String>,
     pub start_after: Option<String>,
 }
 
@@ -220,7 +219,6 @@ fn parse_list_objects_v2_request(body: &str) -> Result<ListObjectsV2Request, Api
         prefix: get_optional_string(root, "prefix")?,
         delimiter: get_optional_string(root, "delimiter")?,
         max_keys: get_optional_i32(root, "max_keys")?,
-        continuation_token: get_optional_string(root, "continuation_token")?,
         start_after: get_optional_string(root, "start_after")?,
     })
 }
@@ -419,7 +417,6 @@ pub async fn list_objects_v2(app_state: &AppState, body: &[u8]) -> Result<Respon
             prefix: payload.prefix,
             delimiter: payload.delimiter,
             max_keys: payload.max_keys,
-            continuation_token: payload.continuation_token,
             start_after: payload.start_after,
         },
     )

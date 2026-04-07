@@ -646,8 +646,6 @@ components:
         max_keys:
           type: [integer, 'null']
           format: int32
-        continuation_token:
-          type: [string, 'null']
         start_after:
           type: [string, 'null']
       required: [bucket]

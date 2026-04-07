@@ -1061,12 +1061,6 @@
             ],
             "format": "int32"
           },
-          "continuation_token": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
           "start_after": {
             "type": [
               "string",
