@@ -152,7 +152,7 @@ cargo run | grep '"request_id":"550e8400-e29b-41d4-a716-446655440000"'
 ### ログが多すぎる場合
 ```bash
 # 特定モジュールを無効化
-RUST_LOG=info,hyper=error,reqwest=error cargo run
+RUST_LOG=info,hyper=error cargo run
 ```
 
 ### 特定の処理をデバッグ

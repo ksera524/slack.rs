@@ -20,15 +20,15 @@ strip = true
 axum = "0.8.1"
 base64 = "0.22.1"
 nojson = "0.3.9"
-reqwest = {version= "0.12.12", default-features = false, features = ["json", "rustls-tls"]}
-serde = { version = "1.0.218", features = ["derive"]}
-serde_json = "1.0.140"
-serde_yaml = "0.9.34"
+shiguredo_http11 = "2026.1.1"
 shiguredo_s3 = "2026.1.0-canary.0"
-tokio = { version="1.44.0",features = ["macros","rt-multi-thread","signal","sync","net"]}
+tokio = { version="1.44.0",features = ["macros","rt-multi-thread","signal","sync","net","io-util"]}
+tokio-rustls = "0.26.4"
 tower-http = { version = "0.6.6", features = ["cors"] }
 tracing = "0.1.41"
 tracing-subscriber = {version = "0.3.19" , features = ["json","env-filter", "fmt"]}
+rustls = "0.23.37"
+webpki-roots = "1.0.6"
 
 [dev-dependencies]
 proptest = "1.7.0"

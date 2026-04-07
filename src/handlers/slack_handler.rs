@@ -5,7 +5,7 @@ use axum::{
     http::{HeaderMap, header::CONTENT_TYPE},
     response::IntoResponse,
 };
-use reqwest::Url;
+use shiguredo_http11::uri::percent_decode;
 use std::time::Instant;
 use tracing::{debug, error, info, instrument, warn};
 
@@ -45,16 +45,17 @@ fn parse_message_request(body: &str) -> Result<SlackMessageRequest, ApiError> {
 
 fn parse_upload_query(raw_query: Option<&str>) -> Result<UploadQuery, ApiError> {
     let query = raw_query.unwrap_or_default();
-    let url = Url::parse(&format!("http://localhost/?{query}"))
-        .map_err(|_| ApiError::BadRequest("Invalid query string".to_string()))?;
-
     let mut channel = None;
     let mut file_name = None;
 
-    for (key, value) in url.query_pairs() {
+    for pair in query.split('&').filter(|s| !s.is_empty()) {
+        let (raw_key, raw_value) = pair.split_once('=').unwrap_or((pair, ""));
+        let key = decode_query_component(raw_key)?;
+        let value = decode_query_component(raw_value)?;
+
         match key.as_ref() {
-            "channel" => channel = Some(value.into_owned()),
-            "file_name" => file_name = Some(value.into_owned()),
+            "channel" => channel = Some(value),
+            "file_name" => file_name = Some(value),
             _ => {}
         }
     }
@@ -73,6 +74,11 @@ fn parse_upload_query(raw_query: Option<&str>) -> Result<UploadQuery, ApiError> 
     });
 
     Ok(UploadQuery { channel, file_name })
+}
+
+fn decode_query_component(value: &str) -> Result<String, ApiError> {
+    let replaced = value.replace('+', " ");
+    percent_decode(&replaced).map_err(|_| ApiError::BadRequest("Invalid query string".to_string()))
 }
 
 fn content_type(headers: &HeaderMap) -> Result<String, ApiError> {

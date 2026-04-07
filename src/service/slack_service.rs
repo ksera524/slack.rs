@@ -1,7 +1,8 @@
-use reqwest::Client;
-use reqwest::header::CONTENT_TYPE;
+use shiguredo_http11::uri::percent_encode_query;
 use std::error::Error as StdError;
 use tracing::{debug, error, info, instrument, warn};
+
+use crate::http_client::{HttpClient, HttpRequest};
 
 fn get_required_string(
     root: nojson::RawJsonValue<'_, '_>,
@@ -36,7 +37,7 @@ fn get_optional_string(root: nojson::RawJsonValue<'_, '_>, name: &str) -> Option
 
 #[instrument(skip(client, slack_bot_token, text), fields(channel = %channel))]
 pub async fn post_message(
-    client: &Client,
+    client: &HttpClient,
     slack_bot_token: &str,
     slack_api_base_url: &str,
     channel: &str,
@@ -58,14 +59,22 @@ pub async fn post_message(
     );
 
     let response = client
-        .post(url)
-        .bearer_auth(slack_bot_token)
-        .header(CONTENT_TYPE, "application/json")
-        .body(payload.to_string())
-        .send()
-        .await?
-        .text()
+        .send(HttpRequest {
+            method: "POST".to_string(),
+            url,
+            headers: vec![
+                (
+                    "Authorization".to_string(),
+                    format!("Bearer {slack_bot_token}"),
+                ),
+                ("Content-Type".to_string(), "application/json".to_string()),
+            ],
+            body: payload.to_string().into_bytes(),
+        })
         .await?;
+
+    let response = String::from_utf8(response.body)
+        .map_err(|e| Box::<dyn StdError>::from(std::io::Error::other(e.to_string())))?;
 
     let parsed = nojson::RawJson::parse(&response)?;
     let root = parsed.value();
@@ -92,17 +101,13 @@ pub async fn post_message(
 
 #[instrument(skip(client, slack_bot_token, file_data), fields(file_name = %file_name, file_size = file_data.len()))]
 pub async fn upload_file(
-    client: &Client,
+    client: &HttpClient,
     slack_bot_token: &str,
     slack_api_base_url: &str,
     file_name: &str,
     file_data: &[u8],
 ) -> Result<(String, String), Box<dyn StdError>> {
     let url = format!("{}/files.getUploadURLExternal", slack_api_base_url);
-    let params = [
-        ("filename", file_name),
-        ("length", &file_data.len().to_string()),
-    ];
 
     debug!(
         api_endpoint = "files.getUploadURLExternal",
@@ -112,13 +117,24 @@ pub async fn upload_file(
     );
 
     let response = client
-        .get(url)
-        .bearer_auth(slack_bot_token)
-        .query(&params)
-        .send()
-        .await?
-        .text()
+        .send(HttpRequest {
+            method: "GET".to_string(),
+            url: format!(
+                "{}?filename={}&length={}",
+                url,
+                percent_encode_query(file_name),
+                file_data.len()
+            ),
+            headers: vec![(
+                "Authorization".to_string(),
+                format!("Bearer {slack_bot_token}"),
+            )],
+            body: Vec::new(),
+        })
         .await?;
+
+    let response = String::from_utf8(response.body)
+        .map_err(|e| Box::<dyn StdError>::from(std::io::Error::other(e.to_string())))?;
 
     let parsed = nojson::RawJson::parse(&response)?;
     let root = parsed.value();
@@ -144,10 +160,15 @@ pub async fn upload_file(
     );
 
     client
-        .post(&upload_url)
-        .header("Content-Type", "application/octet-stream")
-        .body(file_data.to_vec())
-        .send()
+        .send(HttpRequest {
+            method: "POST".to_string(),
+            url: upload_url.clone(),
+            headers: vec![(
+                "Content-Type".to_string(),
+                "application/octet-stream".to_string(),
+            )],
+            body: file_data.to_vec(),
+        })
         .await?;
 
     debug!(
@@ -160,7 +181,7 @@ pub async fn upload_file(
 
 #[instrument(skip(client, token, file_data), fields(file_name = %file_name, channel = %channel, file_size = file_data.len()))]
 pub async fn send_single_file_to_slack(
-    client: &Client,
+    client: &HttpClient,
     token: &str,
     slack_api_base_url: &str,
     file_data: &[u8],
@@ -195,14 +216,19 @@ pub async fn send_single_file_to_slack(
     );
 
     let response_text = client
-        .post(url)
-        .bearer_auth(token)
-        .header(CONTENT_TYPE, "application/json")
-        .body(data.to_string())
-        .send()
-        .await?
-        .text()
+        .send(HttpRequest {
+            method: "POST".to_string(),
+            url,
+            headers: vec![
+                ("Authorization".to_string(), format!("Bearer {token}")),
+                ("Content-Type".to_string(), "application/json".to_string()),
+            ],
+            body: data.to_string().into_bytes(),
+        })
         .await?;
+
+    let response_text = String::from_utf8(response_text.body)
+        .map_err(|e| Box::<dyn StdError>::from(std::io::Error::other(e.to_string())))?;
 
     let parsed = nojson::RawJson::parse(&response_text)?;
     let root = parsed.value();

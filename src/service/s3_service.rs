@@ -1,12 +1,14 @@
 use base64::{Engine, engine::general_purpose::STANDARD as BASE64_STANDARD};
-use reqwest::{Client, header::HeaderName};
-use serde_json::{Value, json};
 use shiguredo_s3::{
     Credential, S3Client, S3Config, S3Request, S3Response,
     types::{CompletedMultipartUpload, CompletedPart},
 };
 
-use crate::{config::settings::Settings, errors::api_error::ApiError};
+use crate::{
+    config::settings::Settings,
+    errors::api_error::ApiError,
+    http_client::{HttpClient, HttpRequest},
+};
 
 pub struct PutObjectInput {
     pub bucket: String,
@@ -112,10 +114,10 @@ pub struct DeleteBucketInput {
 }
 
 pub async fn put_object(
-    http_client: &Client,
+    http_client: &HttpClient,
     settings: &Settings,
     input: PutObjectInput,
-) -> Result<Value, ApiError> {
+) -> Result<String, ApiError> {
     let s3 = create_s3_client(settings)?;
     let mut req = s3
         .put_object()
@@ -133,17 +135,20 @@ pub async fn put_object(
     let output = shiguredo_s3::api::PutObjectFluentBuilder::parse_response(&response)
         .map_err(map_s3_runtime_error_to_api_error)?;
 
-    Ok(json!({
-        "e_tag": output.e_tag,
-        "version_id": output.version_id,
-    }))
+    Ok(nojson::json(|f| {
+        f.object(|f| {
+            f.member("e_tag", &output.e_tag)?;
+            f.member("version_id", &output.version_id)
+        })
+    })
+    .to_string())
 }
 
 pub async fn get_object(
-    http_client: &Client,
+    http_client: &HttpClient,
     settings: &Settings,
     input: GetObjectInput,
-) -> Result<Value, ApiError> {
+) -> Result<String, ApiError> {
     let s3 = create_s3_client(settings)?;
     let request = s3
         .get_object()
@@ -155,19 +160,22 @@ pub async fn get_object(
     let output = shiguredo_s3::api::GetObjectFluentBuilder::parse_response(&response)
         .map_err(map_s3_runtime_error_to_api_error)?;
 
-    Ok(json!({
-        "file_data_base64": BASE64_STANDARD.encode(&output.body),
-        "content_type": output.content_type,
-        "content_length": output.content_length,
-        "e_tag": output.e_tag,
-        "last_modified": output.last_modified,
-        "version_id": output.version_id,
-        "metadata": output.metadata,
-    }))
+    Ok(nojson::json(|f| {
+        f.object(|f| {
+            f.member("file_data_base64", BASE64_STANDARD.encode(&output.body))?;
+            f.member("content_type", &output.content_type)?;
+            f.member("content_length", &output.content_length)?;
+            f.member("e_tag", &output.e_tag)?;
+            f.member("last_modified", &output.last_modified)?;
+            f.member("version_id", &output.version_id)?;
+            f.member("metadata", &output.metadata)
+        })
+    })
+    .to_string())
 }
 
 pub async fn get_object_proxy(
-    http_client: &Client,
+    http_client: &HttpClient,
     settings: &Settings,
     input: ProxyObjectInput,
 ) -> Result<S3Response, ApiError> {
@@ -182,10 +190,10 @@ pub async fn get_object_proxy(
 }
 
 pub async fn head_object(
-    http_client: &Client,
+    http_client: &HttpClient,
     settings: &Settings,
     input: HeadObjectInput,
-) -> Result<Value, ApiError> {
+) -> Result<String, ApiError> {
     let s3 = create_s3_client(settings)?;
     let request = s3
         .head_object()
@@ -197,21 +205,24 @@ pub async fn head_object(
     let output = shiguredo_s3::api::HeadObjectFluentBuilder::parse_response(&response)
         .map_err(map_s3_runtime_error_to_api_error)?;
 
-    Ok(json!({
-        "content_type": output.content_type,
-        "content_length": output.content_length,
-        "e_tag": output.e_tag,
-        "last_modified": output.last_modified,
-        "version_id": output.version_id,
-        "metadata": output.metadata,
-    }))
+    Ok(nojson::json(|f| {
+        f.object(|f| {
+            f.member("content_type", &output.content_type)?;
+            f.member("content_length", &output.content_length)?;
+            f.member("e_tag", &output.e_tag)?;
+            f.member("last_modified", &output.last_modified)?;
+            f.member("version_id", &output.version_id)?;
+            f.member("metadata", &output.metadata)
+        })
+    })
+    .to_string())
 }
 
 pub async fn delete_object(
-    http_client: &Client,
+    http_client: &HttpClient,
     settings: &Settings,
     input: DeleteObjectInput,
-) -> Result<Value, ApiError> {
+) -> Result<String, ApiError> {
     let s3 = create_s3_client(settings)?;
     let request = s3
         .delete_object()
@@ -223,17 +234,20 @@ pub async fn delete_object(
     let output = shiguredo_s3::api::DeleteObjectFluentBuilder::parse_response(&response)
         .map_err(map_s3_runtime_error_to_api_error)?;
 
-    Ok(json!({
-        "delete_marker": output.delete_marker,
-        "version_id": output.version_id,
-    }))
+    Ok(nojson::json(|f| {
+        f.object(|f| {
+            f.member("delete_marker", &output.delete_marker)?;
+            f.member("version_id", &output.version_id)
+        })
+    })
+    .to_string())
 }
 
 pub async fn list_objects_v2(
-    http_client: &Client,
+    http_client: &HttpClient,
     settings: &Settings,
     input: ListObjectsV2Input,
-) -> Result<Value, ApiError> {
+) -> Result<String, ApiError> {
     let s3 = create_s3_client(settings)?;
     let mut req = s3.list_objects_v2().bucket(input.bucket);
     if let Some(prefix) = input.prefix {
@@ -262,36 +276,51 @@ pub async fn list_objects_v2(
     let contents = output.contents.unwrap_or_default();
     let common_prefixes = output.common_prefixes.unwrap_or_default();
 
-    Ok(json!({
-        "is_truncated": output.is_truncated,
-        "name": output.name,
-        "prefix": output.prefix,
-        "delimiter": output.delimiter,
-        "max_keys": output.max_keys,
-        "key_count": output.key_count,
-        "continuation_token": output.continuation_token,
-        "next_continuation_token": output.next_continuation_token,
-        "start_after": output.start_after,
-        "contents": contents.into_iter().map(|obj| {
-            json!({
-                "key": obj.key,
-                "last_modified": obj.last_modified,
-                "e_tag": obj.e_tag,
-                "size": obj.size,
-                "storage_class": obj.storage_class,
-            })
-        }).collect::<Vec<_>>(),
-        "common_prefixes": common_prefixes.into_iter().map(|prefix| {
-            json!({ "prefix": prefix.prefix })
-        }).collect::<Vec<_>>(),
-    }))
+    Ok(nojson::json(|f| {
+        f.object(|f| {
+            f.member("is_truncated", &output.is_truncated)?;
+            f.member("name", &output.name)?;
+            f.member("prefix", &output.prefix)?;
+            f.member("delimiter", &output.delimiter)?;
+            f.member("max_keys", &output.max_keys)?;
+            f.member("key_count", &output.key_count)?;
+            f.member("continuation_token", &output.continuation_token)?;
+            f.member("next_continuation_token", &output.next_continuation_token)?;
+            f.member("start_after", &output.start_after)?;
+            f.member(
+                "contents",
+                nojson::array(|f| {
+                    for obj in &contents {
+                        f.element(nojson::object(|f| {
+                            f.member("key", &obj.key)?;
+                            f.member("last_modified", &obj.last_modified)?;
+                            f.member("e_tag", &obj.e_tag)?;
+                            f.member("size", obj.size)?;
+                            f.member("storage_class", &obj.storage_class)
+                        }))?;
+                    }
+                    Ok(())
+                }),
+            )?;
+            f.member(
+                "common_prefixes",
+                nojson::array(|f| {
+                    for prefix in &common_prefixes {
+                        f.element(nojson::object(|f| f.member("prefix", &prefix.prefix)))?;
+                    }
+                    Ok(())
+                }),
+            )
+        })
+    })
+    .to_string())
 }
 
 pub async fn create_multipart_upload(
-    http_client: &Client,
+    http_client: &HttpClient,
     settings: &Settings,
     input: CreateMultipartUploadInput,
-) -> Result<Value, ApiError> {
+) -> Result<String, ApiError> {
     let s3 = create_s3_client(settings)?;
     let mut req = s3
         .create_multipart_upload()
@@ -308,18 +337,21 @@ pub async fn create_multipart_upload(
     let output = shiguredo_s3::api::CreateMultipartUploadFluentBuilder::parse_response(&response)
         .map_err(map_s3_runtime_error_to_api_error)?;
 
-    Ok(json!({
-        "bucket": output.bucket,
-        "key": output.key,
-        "upload_id": output.upload_id,
-    }))
+    Ok(nojson::json(|f| {
+        f.object(|f| {
+            f.member("bucket", &output.bucket)?;
+            f.member("key", &output.key)?;
+            f.member("upload_id", &output.upload_id)
+        })
+    })
+    .to_string())
 }
 
 pub async fn upload_part(
-    http_client: &Client,
+    http_client: &HttpClient,
     settings: &Settings,
     input: UploadPartInput,
-) -> Result<Value, ApiError> {
+) -> Result<String, ApiError> {
     let s3 = create_s3_client(settings)?;
     let request = s3
         .upload_part()
@@ -334,14 +366,14 @@ pub async fn upload_part(
     let output = shiguredo_s3::api::UploadPartFluentBuilder::parse_response(&response)
         .map_err(map_s3_runtime_error_to_api_error)?;
 
-    Ok(json!({ "e_tag": output.e_tag }))
+    Ok(nojson::json(|f| f.object(|f| f.member("e_tag", &output.e_tag))).to_string())
 }
 
 pub async fn complete_multipart_upload(
-    http_client: &Client,
+    http_client: &HttpClient,
     settings: &Settings,
     input: CompleteMultipartUploadInput,
-) -> Result<Value, ApiError> {
+) -> Result<String, ApiError> {
     let s3 = create_s3_client(settings)?;
     let multipart_upload = CompletedMultipartUpload {
         parts: Some(
@@ -368,20 +400,23 @@ pub async fn complete_multipart_upload(
     let output = shiguredo_s3::api::CompleteMultipartUploadFluentBuilder::parse_response(&response)
         .map_err(map_s3_runtime_error_to_api_error)?;
 
-    Ok(json!({
-        "location": output.location,
-        "bucket": output.bucket,
-        "key": output.key,
-        "e_tag": output.e_tag,
-        "version_id": output.version_id,
-    }))
+    Ok(nojson::json(|f| {
+        f.object(|f| {
+            f.member("location", &output.location)?;
+            f.member("bucket", &output.bucket)?;
+            f.member("key", &output.key)?;
+            f.member("e_tag", &output.e_tag)?;
+            f.member("version_id", &output.version_id)
+        })
+    })
+    .to_string())
 }
 
 pub async fn abort_multipart_upload(
-    http_client: &Client,
+    http_client: &HttpClient,
     settings: &Settings,
     input: AbortMultipartUploadInput,
-) -> Result<Value, ApiError> {
+) -> Result<String, ApiError> {
     let s3 = create_s3_client(settings)?;
     let request = s3
         .abort_multipart_upload()
@@ -394,14 +429,14 @@ pub async fn abort_multipart_upload(
     shiguredo_s3::api::AbortMultipartUploadFluentBuilder::parse_response(&response)
         .map_err(map_s3_runtime_error_to_api_error)?;
 
-    Ok(json!({ "aborted": true }))
+    Ok(nojson::json(|f| f.object(|f| f.member("aborted", true))).to_string())
 }
 
 pub async fn list_parts(
-    http_client: &Client,
+    http_client: &HttpClient,
     settings: &Settings,
     input: ListPartsInput,
-) -> Result<Value, ApiError> {
+) -> Result<String, ApiError> {
     let s3 = create_s3_client(settings)?;
     let mut req = s3
         .list_parts()
@@ -423,31 +458,40 @@ pub async fn list_parts(
         .map_err(map_s3_runtime_error_to_api_error)?;
     let parts = output.parts.unwrap_or_default();
 
-    Ok(json!({
-        "bucket": output.bucket,
-        "key": output.key,
-        "upload_id": output.upload_id,
-        "part_number_marker": output.part_number_marker,
-        "next_part_number_marker": output.next_part_number_marker,
-        "max_parts": output.max_parts,
-        "is_truncated": output.is_truncated,
-        "storage_class": output.storage_class,
-        "parts": parts.into_iter().map(|part| {
-            json!({
-                "part_number": part.part_number,
-                "last_modified": part.last_modified,
-                "e_tag": part.e_tag,
-                "size": part.size,
-            })
-        }).collect::<Vec<_>>(),
-    }))
+    Ok(nojson::json(|f| {
+        f.object(|f| {
+            f.member("bucket", &output.bucket)?;
+            f.member("key", &output.key)?;
+            f.member("upload_id", &output.upload_id)?;
+            f.member("part_number_marker", &output.part_number_marker)?;
+            f.member("next_part_number_marker", &output.next_part_number_marker)?;
+            f.member("max_parts", &output.max_parts)?;
+            f.member("is_truncated", &output.is_truncated)?;
+            f.member("storage_class", &output.storage_class)?;
+            f.member(
+                "parts",
+                nojson::array(|f| {
+                    for part in &parts {
+                        f.element(nojson::object(|f| {
+                            f.member("part_number", part.part_number)?;
+                            f.member("last_modified", &part.last_modified)?;
+                            f.member("e_tag", &part.e_tag)?;
+                            f.member("size", part.size)
+                        }))?;
+                    }
+                    Ok(())
+                }),
+            )
+        })
+    })
+    .to_string())
 }
 
 pub async fn list_multipart_uploads(
-    http_client: &Client,
+    http_client: &HttpClient,
     settings: &Settings,
     input: ListMultipartUploadsInput,
-) -> Result<Value, ApiError> {
+) -> Result<String, ApiError> {
     let s3 = create_s3_client(settings)?;
     let mut req = s3.list_multipart_uploads().bucket(input.bucket);
     if let Some(prefix) = input.prefix {
@@ -475,31 +519,46 @@ pub async fn list_multipart_uploads(
     let uploads = output.uploads.unwrap_or_default();
     let common_prefixes = output.common_prefixes.unwrap_or_default();
 
-    Ok(json!({
-        "bucket": output.bucket,
-        "key_marker": output.key_marker,
-        "upload_id_marker": output.upload_id_marker,
-        "next_key_marker": output.next_key_marker,
-        "next_upload_id_marker": output.next_upload_id_marker,
-        "prefix": output.prefix,
-        "delimiter": output.delimiter,
-        "max_uploads": output.max_uploads,
-        "is_truncated": output.is_truncated,
-        "uploads": uploads.into_iter().map(|upload| {
-            json!({
-                "upload_id": upload.upload_id,
-                "key": upload.key,
-                "initiated": upload.initiated,
-                "storage_class": upload.storage_class,
-            })
-        }).collect::<Vec<_>>(),
-        "common_prefixes": common_prefixes.into_iter().map(|prefix| {
-            json!({ "prefix": prefix.prefix })
-        }).collect::<Vec<_>>(),
-    }))
+    Ok(nojson::json(|f| {
+        f.object(|f| {
+            f.member("bucket", &output.bucket)?;
+            f.member("key_marker", &output.key_marker)?;
+            f.member("upload_id_marker", &output.upload_id_marker)?;
+            f.member("next_key_marker", &output.next_key_marker)?;
+            f.member("next_upload_id_marker", &output.next_upload_id_marker)?;
+            f.member("prefix", &output.prefix)?;
+            f.member("delimiter", &output.delimiter)?;
+            f.member("max_uploads", &output.max_uploads)?;
+            f.member("is_truncated", &output.is_truncated)?;
+            f.member(
+                "uploads",
+                nojson::array(|f| {
+                    for upload in &uploads {
+                        f.element(nojson::object(|f| {
+                            f.member("upload_id", &upload.upload_id)?;
+                            f.member("key", &upload.key)?;
+                            f.member("initiated", &upload.initiated)?;
+                            f.member("storage_class", &upload.storage_class)
+                        }))?;
+                    }
+                    Ok(())
+                }),
+            )?;
+            f.member(
+                "common_prefixes",
+                nojson::array(|f| {
+                    for prefix in &common_prefixes {
+                        f.element(nojson::object(|f| f.member("prefix", &prefix.prefix)))?;
+                    }
+                    Ok(())
+                }),
+            )
+        })
+    })
+    .to_string())
 }
 
-pub fn presigned_get(settings: &Settings, input: PresignedObjectInput) -> Result<Value, ApiError> {
+pub fn presigned_get(settings: &Settings, input: PresignedObjectInput) -> Result<String, ApiError> {
     let s3 = create_s3_client(settings)?;
     let output = s3
         .get_object()
@@ -508,14 +567,28 @@ pub fn presigned_get(settings: &Settings, input: PresignedObjectInput) -> Result
         .presigned(input.expires_in_secs)
         .map_err(map_s3_input_error_to_api_error)?;
 
-    Ok(json!({
-        "url": output.url,
-        "method": output.method,
-        "headers": output.headers,
-    }))
+    Ok(nojson::json(|f| {
+        f.object(|f| {
+            f.member("url", &output.url)?;
+            f.member("method", &output.method)?;
+            f.member(
+                "headers",
+                nojson::array(|f| {
+                    for (name, value) in &output.headers {
+                        f.element(nojson::object(|f| {
+                            f.member("name", name)?;
+                            f.member("value", value)
+                        }))?;
+                    }
+                    Ok(())
+                }),
+            )
+        })
+    })
+    .to_string())
 }
 
-pub fn presigned_put(settings: &Settings, input: PresignedObjectInput) -> Result<Value, ApiError> {
+pub fn presigned_put(settings: &Settings, input: PresignedObjectInput) -> Result<String, ApiError> {
     let s3 = create_s3_client(settings)?;
     let output = s3
         .put_object()
@@ -524,14 +597,31 @@ pub fn presigned_put(settings: &Settings, input: PresignedObjectInput) -> Result
         .presigned(input.expires_in_secs)
         .map_err(map_s3_input_error_to_api_error)?;
 
-    Ok(json!({
-        "url": output.url,
-        "method": output.method,
-        "headers": output.headers,
-    }))
+    Ok(nojson::json(|f| {
+        f.object(|f| {
+            f.member("url", &output.url)?;
+            f.member("method", &output.method)?;
+            f.member(
+                "headers",
+                nojson::array(|f| {
+                    for (name, value) in &output.headers {
+                        f.element(nojson::object(|f| {
+                            f.member("name", name)?;
+                            f.member("value", value)
+                        }))?;
+                    }
+                    Ok(())
+                }),
+            )
+        })
+    })
+    .to_string())
 }
 
-pub async fn list_buckets(http_client: &Client, settings: &Settings) -> Result<Value, ApiError> {
+pub async fn list_buckets(
+    http_client: &HttpClient,
+    settings: &Settings,
+) -> Result<String, ApiError> {
     let s3 = create_s3_client(settings)?;
     let request = s3
         .list_buckets()
@@ -541,25 +631,34 @@ pub async fn list_buckets(http_client: &Client, settings: &Settings) -> Result<V
     let output = shiguredo_s3::api::ListBucketsFluentBuilder::parse_response(&response)
         .map_err(map_s3_runtime_error_to_api_error)?;
 
-    Ok(json!({
-        "continuation_token": output.continuation_token,
-        "prefix": output.prefix,
-        "buckets": output.buckets.into_iter().map(|bucket| {
-            json!({
-                "name": bucket.name,
-                "creation_date": bucket.creation_date,
-                "bucket_region": bucket.bucket_region,
-                "bucket_arn": bucket.bucket_arn,
-            })
-        }).collect::<Vec<_>>(),
-    }))
+    Ok(nojson::json(|f| {
+        f.object(|f| {
+            f.member("continuation_token", &output.continuation_token)?;
+            f.member("prefix", &output.prefix)?;
+            f.member(
+                "buckets",
+                nojson::array(|f| {
+                    for bucket in &output.buckets {
+                        f.element(nojson::object(|f| {
+                            f.member("name", &bucket.name)?;
+                            f.member("creation_date", &bucket.creation_date)?;
+                            f.member("bucket_region", &bucket.bucket_region)?;
+                            f.member("bucket_arn", &bucket.bucket_arn)
+                        }))?;
+                    }
+                    Ok(())
+                }),
+            )
+        })
+    })
+    .to_string())
 }
 
 pub async fn create_bucket(
-    http_client: &Client,
+    http_client: &HttpClient,
     settings: &Settings,
     input: CreateBucketInput,
-) -> Result<Value, ApiError> {
+) -> Result<String, ApiError> {
     let s3 = create_s3_client(settings)?;
     let request = s3
         .create_bucket()
@@ -570,14 +669,14 @@ pub async fn create_bucket(
     let output = shiguredo_s3::api::CreateBucketFluentBuilder::parse_response(&response)
         .map_err(map_s3_runtime_error_to_api_error)?;
 
-    Ok(json!({ "location": output.location }))
+    Ok(nojson::json(|f| f.object(|f| f.member("location", &output.location))).to_string())
 }
 
 pub async fn head_bucket(
-    http_client: &Client,
+    http_client: &HttpClient,
     settings: &Settings,
     input: HeadBucketInput,
-) -> Result<Value, ApiError> {
+) -> Result<String, ApiError> {
     let s3 = create_s3_client(settings)?;
     let request = s3
         .head_bucket()
@@ -588,14 +687,17 @@ pub async fn head_bucket(
     let output = shiguredo_s3::api::HeadBucketFluentBuilder::parse_response(&response)
         .map_err(map_s3_runtime_error_to_api_error)?;
 
-    Ok(json!({ "bucket_region": output.bucket_region }))
+    Ok(
+        nojson::json(|f| f.object(|f| f.member("bucket_region", &output.bucket_region)))
+            .to_string(),
+    )
 }
 
 pub async fn delete_bucket(
-    http_client: &Client,
+    http_client: &HttpClient,
     settings: &Settings,
     input: DeleteBucketInput,
-) -> Result<Value, ApiError> {
+) -> Result<String, ApiError> {
     let s3 = create_s3_client(settings)?;
     let request = s3
         .delete_bucket()
@@ -606,7 +708,7 @@ pub async fn delete_bucket(
     shiguredo_s3::api::DeleteBucketFluentBuilder::parse_response(&response)
         .map_err(map_s3_runtime_error_to_api_error)?;
 
-    Ok(json!({ "deleted": true }))
+    Ok(nojson::json(|f| f.object(|f| f.member("deleted", true))).to_string())
 }
 
 pub fn decode_base64_payload(payload: &str) -> Result<Vec<u8>, ApiError> {
@@ -633,7 +735,7 @@ fn create_s3_client(settings: &Settings) -> Result<S3Client, ApiError> {
         .region(settings.s3_region.clone())
         .credential(credential)
         .use_path_style(settings.s3_use_path_style)
-        .ignore_cert_check(settings.s3_ignore_cert_check);
+        .ignore_cert_check(false);
     if let Some(endpoint) = &settings.s3_endpoint {
         config_builder = config_builder.endpoint(endpoint.clone());
     }
@@ -645,52 +747,22 @@ fn create_s3_client(settings: &Settings) -> Result<S3Client, ApiError> {
     Ok(S3Client::new(config))
 }
 
-async fn execute_s3(http_client: &Client, request: S3Request) -> Result<S3Response, ApiError> {
+async fn execute_s3(http_client: &HttpClient, request: S3Request) -> Result<S3Response, ApiError> {
     let url = build_s3_url(&request)?;
-    let method = reqwest::Method::from_bytes(request.method.as_bytes())
-        .map_err(|e| ApiError::InternalServerError(format!("Invalid HTTP method: {e}")))?;
-
-    let mut req_builder = http_client.request(method, url);
-
-    for (name, value) in &request.headers {
-        let header_name = HeaderName::from_bytes(name.as_bytes())
-            .map_err(|e| ApiError::InternalServerError(format!("Invalid request header: {e}")))?;
-        req_builder = req_builder.header(header_name, value);
-    }
-
-    req_builder = req_builder.body(request.body);
-
-    let response = req_builder
-        .send()
+    let response = http_client
+        .send(HttpRequest {
+            method: request.method,
+            url,
+            headers: request.headers,
+            body: request.body,
+        })
         .await
         .map_err(|e| ApiError::InternalServerError(format!("S3 HTTP request failed: {e}")))?;
 
-    let status_code = response.status().as_u16();
-    let headers = response
-        .headers()
-        .iter()
-        .map(|(name, value)| {
-            (
-                name.to_string(),
-                value
-                    .to_str()
-                    .map(ToOwned::to_owned)
-                    .unwrap_or_else(|_| String::from_utf8_lossy(value.as_bytes()).to_string()),
-            )
-        })
-        .collect::<Vec<_>>();
-    let body = response
-        .bytes()
-        .await
-        .map_err(|e| {
-            ApiError::InternalServerError(format!("Failed to read S3 response body: {e}"))
-        })?
-        .to_vec();
-
     Ok(S3Response {
-        status_code,
-        headers,
-        body,
+        status_code: response.status_code,
+        headers: response.headers,
+        body: response.body,
     })
 }
 
@@ -703,7 +775,7 @@ fn build_s3_url(request: &S3Request) -> Result<String, ApiError> {
     };
     let url = format!("{scheme}://{}:{}{}", request.host, request.port, uri);
 
-    reqwest::Url::parse(&url)
+    shiguredo_http11::uri::Uri::parse(&url)
         .map(|_| url)
         .map_err(|e| ApiError::InternalServerError(format!("Invalid S3 URL: {e}")))
 }
@@ -765,12 +837,12 @@ mod tests {
             };
 
             let built = build_s3_url(&request).expect("url should be valid");
-            let parsed = reqwest::Url::parse(&built).expect("built URL should parse");
+            let parsed = shiguredo_http11::uri::Uri::parse(&built).expect("built URL should parse");
 
             let expected_scheme = if https { "https" } else { "http" };
-            prop_assert_eq!(parsed.scheme(), expected_scheme);
-            prop_assert_eq!(parsed.host_str(), Some(host.as_str()));
-            prop_assert_eq!(parsed.port_or_known_default(), Some(port));
+            prop_assert_eq!(parsed.scheme(), Some(expected_scheme));
+            prop_assert_eq!(parsed.host(), Some(host.as_str()));
+            prop_assert_eq!(parsed.port(), Some(port));
             prop_assert_eq!(parsed.path(), uri);
         }
     }

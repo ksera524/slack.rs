@@ -9,7 +9,6 @@ pub struct Settings {
     pub s3_region: String,
     pub s3_endpoint: Option<String>,
     pub s3_use_path_style: bool,
-    pub s3_ignore_cert_check: bool,
     pub s3_session_token: Option<String>,
 }
 #[derive(Debug)]
@@ -46,7 +45,6 @@ impl Settings {
             .map(|v| v.trim_end_matches('/').to_string())
             .filter(|v| !v.is_empty());
         let s3_use_path_style = parse_bool_env("RUSTFS_S3_USE_PATH_STYLE", true);
-        let s3_ignore_cert_check = parse_bool_env("RUSTFS_S3_IGNORE_CERT_CHECK", false);
         let s3_session_token = env::var("RUSTFS_S3_SESSION_TOKEN")
             .ok()
             .filter(|v| !v.is_empty());
@@ -59,7 +57,6 @@ impl Settings {
             s3_region,
             s3_endpoint,
             s3_use_path_style,
-            s3_ignore_cert_check,
             s3_session_token,
         })
     }

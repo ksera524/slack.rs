@@ -20,6 +20,18 @@ paths:
                 type: string
                 example: ok
 
+  /openapi.json:
+    get:
+      operationId: openapiJson
+      summary: OpenAPI JSON document
+      responses:
+        '200':
+          description: OpenAPI document as JSON
+          content:
+            application/json:
+              schema:
+                type: object
+
   /slack/message:
     post:
       operationId: postSlackMessage
@@ -40,16 +52,72 @@ paths:
         default:
           $ref: '#/components/responses/ProblemDetails'
 
-  /slack/upload_base64:
+  /slack/upload/image:
     post:
-      operationId: uploadSlackFileBase64
-      summary: Upload file to Slack via base64 content
+      operationId: uploadSlackImageRaw
+      summary: Upload an image to Slack channel
+      parameters:
+        - name: channel
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: file_name
+          in: query
+          required: false
+          schema:
+            type: string
       requestBody:
         required: true
         content:
-          application/json:
+          image/png:
             schema:
-              $ref: '#/components/schemas/SlackUploadBase64Request'
+              type: string
+              format: binary
+          image/jpeg:
+            schema:
+              type: string
+              format: binary
+          image/webp:
+            schema:
+              type: string
+              format: binary
+          image/gif:
+            schema:
+              type: string
+              format: binary
+      responses:
+        '200':
+          description: Slack API response JSON as string payload
+          content:
+            application/json:
+              schema:
+                type: string
+        default:
+          $ref: '#/components/responses/ProblemDetails'
+
+  /slack/upload/pdf:
+    post:
+      operationId: uploadSlackPdfRaw
+      summary: Upload a PDF to Slack channel
+      parameters:
+        - name: channel
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: file_name
+          in: query
+          required: false
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/pdf:
+            schema:
+              type: string
+              format: binary
       responses:
         '200':
           description: Slack API response JSON as string payload
@@ -80,7 +148,7 @@ paths:
         default:
           $ref: '#/components/responses/ProblemDetails'
 
-  /s3/preview/{bucket}/{key}:
+  /s3/preview/{bucket}/{*key}:
     get:
       operationId: s3PreviewObject
       summary: Proxy object preview through API server
@@ -187,6 +255,12 @@ paths:
                 $ref: '#/components/schemas/S3ListObjectsV2Response'
         default:
           $ref: '#/components/responses/ProblemDetails'
+    options:
+      operationId: s3ListObjectsV2Preflight
+      summary: CORS preflight for list objects
+      responses:
+        '204':
+          description: No Content
 
   /s3/create_multipart_upload:
     post:
@@ -331,6 +405,12 @@ paths:
                 $ref: '#/components/schemas/S3PresignedObjectResponse'
         default:
           $ref: '#/components/responses/ProblemDetails'
+    options:
+      operationId: s3PresignedGetObjectPreflight
+      summary: CORS preflight for presigned GET URL
+      responses:
+        '204':
+          description: No Content
 
   /s3/presigned_put_object:
     post:
@@ -469,17 +549,6 @@ components:
         text:
           type: string
       required: [channel, text]
-
-    SlackUploadBase64Request:
-      type: object
-      properties:
-        file_name:
-          type: string
-        file_data_base64:
-          type: string
-        channel:
-          type: string
-      required: [file_name, file_data_base64, channel]
 
     S3BucketRequest:
       type: object

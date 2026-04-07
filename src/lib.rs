@@ -2,6 +2,7 @@ pub mod app;
 pub mod config;
 pub mod errors;
 pub mod handlers;
+pub mod http_client;
 pub mod logging;
 pub mod middleware;
 pub mod request_id;

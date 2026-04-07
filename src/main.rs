@@ -36,7 +36,7 @@ async fn main() {
         }
     };
 
-    let client = reqwest::Client::new();
+    let client = api_hub::http_client::HttpClient::new();
 
     let app_state = config::state::AppState { settings, client };
 

@@ -1,12 +1,9 @@
 use axum::{
-    Json,
     body::Body,
     extract::{Path, State},
-    http::{HeaderName, HeaderValue, StatusCode},
+    http::{HeaderName, HeaderValue, StatusCode, header::CONTENT_TYPE},
     response::Response,
 };
-use serde::Deserialize;
-use serde_json::Value;
 
 use crate::{
     config::state::AppState,
@@ -20,7 +17,6 @@ use crate::{
     },
 };
 
-#[derive(Deserialize)]
 pub struct PutObjectBase64Request {
     pub bucket: String,
     pub key: String,
@@ -28,25 +24,21 @@ pub struct PutObjectBase64Request {
     pub content_type: Option<String>,
 }
 
-#[derive(Deserialize)]
 pub struct GetObjectRequest {
     pub bucket: String,
     pub key: String,
 }
 
-#[derive(Deserialize)]
 pub struct HeadObjectRequest {
     pub bucket: String,
     pub key: String,
 }
 
-#[derive(Deserialize)]
 pub struct DeleteObjectRequest {
     pub bucket: String,
     pub key: String,
 }
 
-#[derive(Deserialize)]
 pub struct ListObjectsV2Request {
     pub bucket: String,
     pub prefix: Option<String>,
@@ -56,14 +48,12 @@ pub struct ListObjectsV2Request {
     pub start_after: Option<String>,
 }
 
-#[derive(Deserialize)]
 pub struct CreateMultipartUploadRequest {
     pub bucket: String,
     pub key: String,
     pub content_type: Option<String>,
 }
 
-#[derive(Deserialize)]
 pub struct UploadPartBase64Request {
     pub bucket: String,
     pub key: String,
@@ -72,13 +62,11 @@ pub struct UploadPartBase64Request {
     pub part_data_base64: String,
 }
 
-#[derive(Deserialize)]
 pub struct CompletePartRequest {
     pub part_number: i32,
     pub e_tag: String,
 }
 
-#[derive(Deserialize)]
 pub struct CompleteMultipartUploadRequest {
     pub bucket: String,
     pub key: String,
@@ -86,14 +74,12 @@ pub struct CompleteMultipartUploadRequest {
     pub parts: Vec<CompletePartRequest>,
 }
 
-#[derive(Deserialize)]
 pub struct AbortMultipartUploadRequest {
     pub bucket: String,
     pub key: String,
     pub upload_id: String,
 }
 
-#[derive(Deserialize)]
 pub struct ListPartsRequest {
     pub bucket: String,
     pub key: String,
@@ -102,7 +88,6 @@ pub struct ListPartsRequest {
     pub part_number_marker: Option<i32>,
 }
 
-#[derive(Deserialize)]
 pub struct ListMultipartUploadsRequest {
     pub bucket: String,
     pub prefix: Option<String>,
@@ -112,22 +97,262 @@ pub struct ListMultipartUploadsRequest {
     pub upload_id_marker: Option<String>,
 }
 
-#[derive(Deserialize)]
 pub struct PresignedObjectRequest {
     pub bucket: String,
     pub key: String,
     pub expires_in_secs: Option<u64>,
 }
 
-#[derive(Deserialize)]
 pub struct BucketRequest {
     pub bucket: String,
 }
 
+fn parse_json_body(body: &str) -> Result<nojson::RawJson<'_>, ApiError> {
+    nojson::RawJson::parse(body).map_err(|e| ApiError::BadRequest(format!("Invalid JSON: {e}")))
+}
+
+fn get_required_string(root: nojson::RawJsonValue<'_, '_>, name: &str) -> Result<String, ApiError> {
+    root.to_member(name)
+        .map_err(|e| ApiError::BadRequest(e.to_string()))?
+        .required()
+        .map_err(|e| ApiError::BadRequest(e.to_string()))?
+        .try_into()
+        .map_err(|e| ApiError::BadRequest(format!("Invalid '{name}': {e}")))
+}
+
+fn get_optional_string(
+    root: nojson::RawJsonValue<'_, '_>,
+    name: &str,
+) -> Result<Option<String>, ApiError> {
+    let Some(value) = root
+        .to_member(name)
+        .map_err(|e| ApiError::BadRequest(e.to_string()))?
+        .optional()
+    else {
+        return Ok(None);
+    };
+    let parsed = String::try_from(value)
+        .map_err(|e| ApiError::BadRequest(format!("Invalid '{name}': {e}")))?;
+    Ok(Some(parsed))
+}
+
+fn get_optional_i32(
+    root: nojson::RawJsonValue<'_, '_>,
+    name: &str,
+) -> Result<Option<i32>, ApiError> {
+    let Some(value) = root
+        .to_member(name)
+        .map_err(|e| ApiError::BadRequest(e.to_string()))?
+        .optional()
+    else {
+        return Ok(None);
+    };
+    let parsed =
+        i32::try_from(value).map_err(|e| ApiError::BadRequest(format!("Invalid '{name}': {e}")))?;
+    Ok(Some(parsed))
+}
+
+fn get_optional_u64(
+    root: nojson::RawJsonValue<'_, '_>,
+    name: &str,
+) -> Result<Option<u64>, ApiError> {
+    let Some(value) = root
+        .to_member(name)
+        .map_err(|e| ApiError::BadRequest(e.to_string()))?
+        .optional()
+    else {
+        return Ok(None);
+    };
+    let parsed =
+        u64::try_from(value).map_err(|e| ApiError::BadRequest(format!("Invalid '{name}': {e}")))?;
+    Ok(Some(parsed))
+}
+
+fn json_response(body: String) -> Response {
+    let mut response = Response::new(Body::from(body));
+    *response.status_mut() = StatusCode::OK;
+    response
+        .headers_mut()
+        .insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
+    response
+}
+
+fn parse_put_object_base64_request(body: &str) -> Result<PutObjectBase64Request, ApiError> {
+    let json = parse_json_body(body)?;
+    let root = json.value();
+    Ok(PutObjectBase64Request {
+        bucket: get_required_string(root, "bucket")?,
+        key: get_required_string(root, "key")?,
+        file_data_base64: get_required_string(root, "file_data_base64")?,
+        content_type: get_optional_string(root, "content_type")?,
+    })
+}
+
+fn parse_get_object_request(body: &str) -> Result<GetObjectRequest, ApiError> {
+    let json = parse_json_body(body)?;
+    let root = json.value();
+    Ok(GetObjectRequest {
+        bucket: get_required_string(root, "bucket")?,
+        key: get_required_string(root, "key")?,
+    })
+}
+
+fn parse_head_object_request(body: &str) -> Result<HeadObjectRequest, ApiError> {
+    let json = parse_json_body(body)?;
+    let root = json.value();
+    Ok(HeadObjectRequest {
+        bucket: get_required_string(root, "bucket")?,
+        key: get_required_string(root, "key")?,
+    })
+}
+
+fn parse_delete_object_request(body: &str) -> Result<DeleteObjectRequest, ApiError> {
+    let json = parse_json_body(body)?;
+    let root = json.value();
+    Ok(DeleteObjectRequest {
+        bucket: get_required_string(root, "bucket")?,
+        key: get_required_string(root, "key")?,
+    })
+}
+
+fn parse_list_objects_v2_request(body: &str) -> Result<ListObjectsV2Request, ApiError> {
+    let json = parse_json_body(body)?;
+    let root = json.value();
+    Ok(ListObjectsV2Request {
+        bucket: get_required_string(root, "bucket")?,
+        prefix: get_optional_string(root, "prefix")?,
+        delimiter: get_optional_string(root, "delimiter")?,
+        max_keys: get_optional_i32(root, "max_keys")?,
+        continuation_token: get_optional_string(root, "continuation_token")?,
+        start_after: get_optional_string(root, "start_after")?,
+    })
+}
+
+fn parse_create_multipart_upload_request(
+    body: &str,
+) -> Result<CreateMultipartUploadRequest, ApiError> {
+    let json = parse_json_body(body)?;
+    let root = json.value();
+    Ok(CreateMultipartUploadRequest {
+        bucket: get_required_string(root, "bucket")?,
+        key: get_required_string(root, "key")?,
+        content_type: get_optional_string(root, "content_type")?,
+    })
+}
+
+fn parse_upload_part_base64_request(body: &str) -> Result<UploadPartBase64Request, ApiError> {
+    let json = parse_json_body(body)?;
+    let root = json.value();
+    Ok(UploadPartBase64Request {
+        bucket: get_required_string(root, "bucket")?,
+        key: get_required_string(root, "key")?,
+        upload_id: get_required_string(root, "upload_id")?,
+        part_number: get_required_i32(root, "part_number")?,
+        part_data_base64: get_required_string(root, "part_data_base64")?,
+    })
+}
+
+fn get_required_i32(root: nojson::RawJsonValue<'_, '_>, name: &str) -> Result<i32, ApiError> {
+    root.to_member(name)
+        .map_err(|e| ApiError::BadRequest(e.to_string()))?
+        .required()
+        .map_err(|e| ApiError::BadRequest(e.to_string()))?
+        .try_into()
+        .map_err(|e| ApiError::BadRequest(format!("Invalid '{name}': {e}")))
+}
+
+fn parse_complete_multipart_upload_request(
+    body: &str,
+) -> Result<CompleteMultipartUploadRequest, ApiError> {
+    let json = parse_json_body(body)?;
+    let root = json.value();
+    let parts_raw = root
+        .to_member("parts")
+        .map_err(|e| ApiError::BadRequest(e.to_string()))?
+        .required()
+        .map_err(|e| ApiError::BadRequest(e.to_string()))?;
+
+    let mut parts = Vec::new();
+    for part in parts_raw
+        .to_array()
+        .map_err(|e| ApiError::BadRequest(format!("Invalid 'parts': {e}")))?
+    {
+        parts.push(CompletePartRequest {
+            part_number: get_required_i32(part, "part_number")?,
+            e_tag: get_required_string(part, "e_tag")?,
+        });
+    }
+
+    Ok(CompleteMultipartUploadRequest {
+        bucket: get_required_string(root, "bucket")?,
+        key: get_required_string(root, "key")?,
+        upload_id: get_required_string(root, "upload_id")?,
+        parts,
+    })
+}
+
+fn parse_abort_multipart_upload_request(
+    body: &str,
+) -> Result<AbortMultipartUploadRequest, ApiError> {
+    let json = parse_json_body(body)?;
+    let root = json.value();
+    Ok(AbortMultipartUploadRequest {
+        bucket: get_required_string(root, "bucket")?,
+        key: get_required_string(root, "key")?,
+        upload_id: get_required_string(root, "upload_id")?,
+    })
+}
+
+fn parse_list_parts_request(body: &str) -> Result<ListPartsRequest, ApiError> {
+    let json = parse_json_body(body)?;
+    let root = json.value();
+    Ok(ListPartsRequest {
+        bucket: get_required_string(root, "bucket")?,
+        key: get_required_string(root, "key")?,
+        upload_id: get_required_string(root, "upload_id")?,
+        max_parts: get_optional_i32(root, "max_parts")?,
+        part_number_marker: get_optional_i32(root, "part_number_marker")?,
+    })
+}
+
+fn parse_list_multipart_uploads_request(
+    body: &str,
+) -> Result<ListMultipartUploadsRequest, ApiError> {
+    let json = parse_json_body(body)?;
+    let root = json.value();
+    Ok(ListMultipartUploadsRequest {
+        bucket: get_required_string(root, "bucket")?,
+        prefix: get_optional_string(root, "prefix")?,
+        delimiter: get_optional_string(root, "delimiter")?,
+        max_uploads: get_optional_i32(root, "max_uploads")?,
+        key_marker: get_optional_string(root, "key_marker")?,
+        upload_id_marker: get_optional_string(root, "upload_id_marker")?,
+    })
+}
+
+fn parse_presigned_object_request(body: &str) -> Result<PresignedObjectRequest, ApiError> {
+    let json = parse_json_body(body)?;
+    let root = json.value();
+    Ok(PresignedObjectRequest {
+        bucket: get_required_string(root, "bucket")?,
+        key: get_required_string(root, "key")?,
+        expires_in_secs: get_optional_u64(root, "expires_in_secs")?,
+    })
+}
+
+fn parse_bucket_request(body: &str) -> Result<BucketRequest, ApiError> {
+    let json = parse_json_body(body)?;
+    let root = json.value();
+    Ok(BucketRequest {
+        bucket: get_required_string(root, "bucket")?,
+    })
+}
+
 pub async fn put_object_base64(
     State(app_state): State<AppState>,
-    Json(payload): Json<PutObjectBase64Request>,
-) -> Result<Json<Value>, ApiError> {
+    body: String,
+) -> Result<Response, ApiError> {
+    let payload = parse_put_object_base64_request(&body)?;
     let body = s3_service::decode_base64_payload(&payload.file_data_base64)?;
     let result = s3_service::put_object(
         &app_state.client,
@@ -140,13 +365,14 @@ pub async fn put_object_base64(
         },
     )
     .await?;
-    Ok(Json(result))
+    Ok(json_response(result))
 }
 
 pub async fn get_object_base64(
     State(app_state): State<AppState>,
-    Json(payload): Json<GetObjectRequest>,
-) -> Result<Json<Value>, ApiError> {
+    body: String,
+) -> Result<Response, ApiError> {
+    let payload = parse_get_object_request(&body)?;
     let result = s3_service::get_object(
         &app_state.client,
         &app_state.settings,
@@ -156,13 +382,14 @@ pub async fn get_object_base64(
         },
     )
     .await?;
-    Ok(Json(result))
+    Ok(json_response(result))
 }
 
 pub async fn head_object(
     State(app_state): State<AppState>,
-    Json(payload): Json<HeadObjectRequest>,
-) -> Result<Json<Value>, ApiError> {
+    body: String,
+) -> Result<Response, ApiError> {
+    let payload = parse_head_object_request(&body)?;
     let result = s3_service::head_object(
         &app_state.client,
         &app_state.settings,
@@ -172,13 +399,14 @@ pub async fn head_object(
         },
     )
     .await?;
-    Ok(Json(result))
+    Ok(json_response(result))
 }
 
 pub async fn delete_object(
     State(app_state): State<AppState>,
-    Json(payload): Json<DeleteObjectRequest>,
-) -> Result<Json<Value>, ApiError> {
+    body: String,
+) -> Result<Response, ApiError> {
+    let payload = parse_delete_object_request(&body)?;
     let result = s3_service::delete_object(
         &app_state.client,
         &app_state.settings,
@@ -188,13 +416,14 @@ pub async fn delete_object(
         },
     )
     .await?;
-    Ok(Json(result))
+    Ok(json_response(result))
 }
 
 pub async fn list_objects_v2(
     State(app_state): State<AppState>,
-    Json(payload): Json<ListObjectsV2Request>,
-) -> Result<Json<Value>, ApiError> {
+    body: String,
+) -> Result<Response, ApiError> {
+    let payload = parse_list_objects_v2_request(&body)?;
     let result = s3_service::list_objects_v2(
         &app_state.client,
         &app_state.settings,
@@ -208,13 +437,14 @@ pub async fn list_objects_v2(
         },
     )
     .await?;
-    Ok(Json(result))
+    Ok(json_response(result))
 }
 
 pub async fn create_multipart_upload(
     State(app_state): State<AppState>,
-    Json(payload): Json<CreateMultipartUploadRequest>,
-) -> Result<Json<Value>, ApiError> {
+    body: String,
+) -> Result<Response, ApiError> {
+    let payload = parse_create_multipart_upload_request(&body)?;
     let result = s3_service::create_multipart_upload(
         &app_state.client,
         &app_state.settings,
@@ -225,13 +455,14 @@ pub async fn create_multipart_upload(
         },
     )
     .await?;
-    Ok(Json(result))
+    Ok(json_response(result))
 }
 
 pub async fn upload_part_base64(
     State(app_state): State<AppState>,
-    Json(payload): Json<UploadPartBase64Request>,
-) -> Result<Json<Value>, ApiError> {
+    body: String,
+) -> Result<Response, ApiError> {
+    let payload = parse_upload_part_base64_request(&body)?;
     let body = s3_service::decode_base64_payload(&payload.part_data_base64)?;
     let result = s3_service::upload_part(
         &app_state.client,
@@ -245,13 +476,14 @@ pub async fn upload_part_base64(
         },
     )
     .await?;
-    Ok(Json(result))
+    Ok(json_response(result))
 }
 
 pub async fn complete_multipart_upload(
     State(app_state): State<AppState>,
-    Json(payload): Json<CompleteMultipartUploadRequest>,
-) -> Result<Json<Value>, ApiError> {
+    body: String,
+) -> Result<Response, ApiError> {
+    let payload = parse_complete_multipart_upload_request(&body)?;
     let parts = payload
         .parts
         .into_iter()
@@ -272,13 +504,14 @@ pub async fn complete_multipart_upload(
         },
     )
     .await?;
-    Ok(Json(result))
+    Ok(json_response(result))
 }
 
 pub async fn abort_multipart_upload(
     State(app_state): State<AppState>,
-    Json(payload): Json<AbortMultipartUploadRequest>,
-) -> Result<Json<Value>, ApiError> {
+    body: String,
+) -> Result<Response, ApiError> {
+    let payload = parse_abort_multipart_upload_request(&body)?;
     let result = s3_service::abort_multipart_upload(
         &app_state.client,
         &app_state.settings,
@@ -289,13 +522,14 @@ pub async fn abort_multipart_upload(
         },
     )
     .await?;
-    Ok(Json(result))
+    Ok(json_response(result))
 }
 
 pub async fn list_parts(
     State(app_state): State<AppState>,
-    Json(payload): Json<ListPartsRequest>,
-) -> Result<Json<Value>, ApiError> {
+    body: String,
+) -> Result<Response, ApiError> {
+    let payload = parse_list_parts_request(&body)?;
     let result = s3_service::list_parts(
         &app_state.client,
         &app_state.settings,
@@ -308,13 +542,14 @@ pub async fn list_parts(
         },
     )
     .await?;
-    Ok(Json(result))
+    Ok(json_response(result))
 }
 
 pub async fn list_multipart_uploads(
     State(app_state): State<AppState>,
-    Json(payload): Json<ListMultipartUploadsRequest>,
-) -> Result<Json<Value>, ApiError> {
+    body: String,
+) -> Result<Response, ApiError> {
+    let payload = parse_list_multipart_uploads_request(&body)?;
     let result = s3_service::list_multipart_uploads(
         &app_state.client,
         &app_state.settings,
@@ -328,13 +563,14 @@ pub async fn list_multipart_uploads(
         },
     )
     .await?;
-    Ok(Json(result))
+    Ok(json_response(result))
 }
 
 pub async fn presigned_get_object(
     State(app_state): State<AppState>,
-    Json(payload): Json<PresignedObjectRequest>,
-) -> Result<Json<Value>, ApiError> {
+    body: String,
+) -> Result<Response, ApiError> {
+    let payload = parse_presigned_object_request(&body)?;
     let result = s3_service::presigned_get(
         &app_state.settings,
         PresignedObjectInput {
@@ -343,13 +579,14 @@ pub async fn presigned_get_object(
             expires_in_secs: payload.expires_in_secs.unwrap_or(900),
         },
     )?;
-    Ok(Json(result))
+    Ok(json_response(result))
 }
 
 pub async fn presigned_put_object(
     State(app_state): State<AppState>,
-    Json(payload): Json<PresignedObjectRequest>,
-) -> Result<Json<Value>, ApiError> {
+    body: String,
+) -> Result<Response, ApiError> {
+    let payload = parse_presigned_object_request(&body)?;
     let result = s3_service::presigned_put(
         &app_state.settings,
         PresignedObjectInput {
@@ -358,18 +595,19 @@ pub async fn presigned_put_object(
             expires_in_secs: payload.expires_in_secs.unwrap_or(900),
         },
     )?;
-    Ok(Json(result))
+    Ok(json_response(result))
 }
 
-pub async fn list_buckets(State(app_state): State<AppState>) -> Result<Json<Value>, ApiError> {
+pub async fn list_buckets(State(app_state): State<AppState>) -> Result<Response, ApiError> {
     let result = s3_service::list_buckets(&app_state.client, &app_state.settings).await?;
-    Ok(Json(result))
+    Ok(json_response(result))
 }
 
 pub async fn create_bucket(
     State(app_state): State<AppState>,
-    Json(payload): Json<BucketRequest>,
-) -> Result<Json<Value>, ApiError> {
+    body: String,
+) -> Result<Response, ApiError> {
+    let payload = parse_bucket_request(&body)?;
     let result = s3_service::create_bucket(
         &app_state.client,
         &app_state.settings,
@@ -378,13 +616,14 @@ pub async fn create_bucket(
         },
     )
     .await?;
-    Ok(Json(result))
+    Ok(json_response(result))
 }
 
 pub async fn head_bucket(
     State(app_state): State<AppState>,
-    Json(payload): Json<BucketRequest>,
-) -> Result<Json<Value>, ApiError> {
+    body: String,
+) -> Result<Response, ApiError> {
+    let payload = parse_bucket_request(&body)?;
     let result = s3_service::head_bucket(
         &app_state.client,
         &app_state.settings,
@@ -393,13 +632,14 @@ pub async fn head_bucket(
         },
     )
     .await?;
-    Ok(Json(result))
+    Ok(json_response(result))
 }
 
 pub async fn delete_bucket(
     State(app_state): State<AppState>,
-    Json(payload): Json<BucketRequest>,
-) -> Result<Json<Value>, ApiError> {
+    body: String,
+) -> Result<Response, ApiError> {
+    let payload = parse_bucket_request(&body)?;
     let result = s3_service::delete_bucket(
         &app_state.client,
         &app_state.settings,
@@ -408,7 +648,7 @@ pub async fn delete_bucket(
         },
     )
     .await?;
-    Ok(Json(result))
+    Ok(json_response(result))
 }
 
 pub async fn preview_object(

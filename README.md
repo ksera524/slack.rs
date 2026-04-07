@@ -77,7 +77,6 @@ OpenAPI definition: `openapi.yaml`
 - `RUSTFS_S3_REGION` (任意, デフォルト: `us-east-1`)
 - `RUSTFS_S3_ENDPOINT` (任意, 例: `http://rustfs.example.local:9000`)
 - `RUSTFS_S3_USE_PATH_STYLE` (任意, デフォルト: `true`)
-- `RUSTFS_S3_IGNORE_CERT_CHECK` (任意, デフォルト: `false`)
 - `RUSTFS_S3_SESSION_TOKEN` (任意)
 
 ## 起動

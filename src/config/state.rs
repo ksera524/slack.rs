@@ -1,8 +1,8 @@
 use crate::config::settings::Settings;
-use reqwest::Client;
+use crate::http_client::HttpClient;
 
 #[derive(Clone)]
 pub struct AppState {
     pub settings: Settings,
-    pub client: Client,
+    pub client: HttpClient,
 }
