@@ -229,6 +229,9 @@ async fn route_request(
         ("POST", "/s3/delete_object") => {
             return s3_handler::delete_object(app_state, &request.body).await;
         }
+        ("POST", "/s3/delete_objects") => {
+            return s3_handler::delete_objects(app_state, &request.body).await;
+        }
         ("POST", "/s3/list_objects_v2") => {
             return s3_handler::list_objects_v2(app_state, &request.body).await;
         }
@@ -318,6 +321,7 @@ fn is_known_path(path: &str) -> bool {
             | "/s3/get_object_base64"
             | "/s3/head_object"
             | "/s3/delete_object"
+            | "/s3/delete_objects"
             | "/s3/list_objects_v2"
             | "/s3/create_multipart_upload"
             | "/s3/upload_part_base64"

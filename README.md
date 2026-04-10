@@ -28,6 +28,8 @@ OpenAPI definition: `openapi.yaml`
   - body: `{ "bucket": "b", "key": "path/a.txt" }`
 - `POST /s3/delete_object`
   - body: `{ "bucket": "b", "key": "path/a.txt" }`
+- `POST /s3/delete_objects`
+  - body: `{ "bucket": "b", "objects": [{ "key": "path/a.txt" }, { "key": "path/b.txt", "version_id": "..." }], "quiet": false }`
 - `POST /s3/list_objects_v2`
   - body: `{ "bucket": "b", "prefix": "path/", "max_keys": 1000 }`
 - `POST /s3/create_multipart_upload`

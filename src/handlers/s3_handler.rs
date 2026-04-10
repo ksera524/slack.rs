@@ -5,10 +5,10 @@ use crate::{
     errors::api_error::ApiError,
     service::s3_service::{
         self, AbortMultipartUploadInput, CompleteMultipartUploadInput, CompletePartInput,
-        CreateBucketInput, CreateMultipartUploadInput, DeleteBucketInput, DeleteObjectInput,
-        GetObjectInput, HeadBucketInput, HeadObjectInput, ListMultipartUploadsInput,
-        ListObjectsV2Input, ListPartsInput, PresignedObjectInput, ProxyObjectInput, PutObjectInput,
-        UploadPartInput,
+        CreateBucketInput, CreateMultipartUploadInput, DeleteBucketInput,
+        DeleteObjectIdentifierInput, DeleteObjectInput, DeleteObjectsInput, GetObjectInput,
+        HeadBucketInput, HeadObjectInput, ListMultipartUploadsInput, ListObjectsV2Input,
+        ListPartsInput, PresignedObjectInput, ProxyObjectInput, PutObjectInput, UploadPartInput,
     },
 };
 
@@ -32,6 +32,17 @@ pub struct HeadObjectRequest {
 pub struct DeleteObjectRequest {
     pub bucket: String,
     pub key: String,
+}
+
+pub struct DeleteObjectIdentifierRequest {
+    pub key: String,
+    pub version_id: Option<String>,
+}
+
+pub struct DeleteObjectsRequest {
+    pub bucket: String,
+    pub objects: Vec<DeleteObjectIdentifierRequest>,
+    pub quiet: Option<bool>,
 }
 
 pub struct ListObjectsV2Request {
@@ -167,6 +178,22 @@ fn get_optional_u64(
     Ok(Some(parsed))
 }
 
+fn get_optional_bool(
+    root: nojson::RawJsonValue<'_, '_>,
+    name: &str,
+) -> Result<Option<bool>, ApiError> {
+    let Some(value) = root
+        .to_member(name)
+        .map_err(|e| ApiError::BadRequest(e.to_string()))?
+        .optional()
+    else {
+        return Ok(None);
+    };
+    let parsed = bool::try_from(value)
+        .map_err(|e| ApiError::BadRequest(format!("Invalid '{name}': {e}")))?;
+    Ok(Some(parsed))
+}
+
 fn json_response(body: String) -> Response {
     Response::new(200, "OK")
         .header("Content-Type", "application/json")
@@ -208,6 +235,33 @@ fn parse_delete_object_request(body: &str) -> Result<DeleteObjectRequest, ApiErr
     Ok(DeleteObjectRequest {
         bucket: get_required_string(root, "bucket")?,
         key: get_required_string(root, "key")?,
+    })
+}
+
+fn parse_delete_objects_request(body: &str) -> Result<DeleteObjectsRequest, ApiError> {
+    let json = parse_json_body(body)?;
+    let root = json.value();
+    let objects_raw = root
+        .to_member("objects")
+        .map_err(|e| ApiError::BadRequest(e.to_string()))?
+        .required()
+        .map_err(|e| ApiError::BadRequest(e.to_string()))?;
+
+    let mut objects = Vec::new();
+    for object in objects_raw
+        .to_array()
+        .map_err(|e| ApiError::BadRequest(format!("Invalid 'objects': {e}")))?
+    {
+        objects.push(DeleteObjectIdentifierRequest {
+            key: get_required_string(object, "key")?,
+            version_id: get_optional_string(object, "version_id")?,
+        });
+    }
+
+    Ok(DeleteObjectsRequest {
+        bucket: get_required_string(root, "bucket")?,
+        objects,
+        quiet: get_optional_bool(root, "quiet")?,
     })
 }
 
@@ -400,6 +454,30 @@ pub async fn delete_object(app_state: &AppState, body: &[u8]) -> Result<Response
         DeleteObjectInput {
             bucket: payload.bucket,
             key: payload.key,
+        },
+    )
+    .await?;
+    Ok(json_response(result))
+}
+
+pub async fn delete_objects(app_state: &AppState, body: &[u8]) -> Result<Response, ApiError> {
+    let body = body_to_utf8(body)?;
+    let payload = parse_delete_objects_request(&body)?;
+    let objects = payload
+        .objects
+        .into_iter()
+        .map(|object| DeleteObjectIdentifierInput {
+            key: object.key,
+            version_id: object.version_id,
+        })
+        .collect::<Vec<_>>();
+    let result = s3_service::delete_objects(
+        &app_state.client,
+        &app_state.settings,
+        DeleteObjectsInput {
+            bucket: payload.bucket,
+            objects,
+            quiet: payload.quiet.unwrap_or(false),
         },
     )
     .await?;

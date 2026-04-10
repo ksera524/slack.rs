@@ -364,6 +364,37 @@
         }
       }
     },
+    "/s3/delete_objects": {
+      "post": {
+        "operationId": "s3DeleteObjects",
+        "summary": "Delete multiple objects",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/S3DeleteObjectsRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Delete objects result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/S3DeleteObjectsResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/ProblemDetails"
+          }
+        }
+      }
+    },
     "/s3/list_objects_v2": {
       "post": {
         "operationId": "s3ListObjectsV2",
@@ -1033,6 +1064,116 @@
               "string",
               "null"
             ]
+          }
+        }
+      },
+      "S3DeleteObjectIdentifier": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "version_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "key"
+        ]
+      },
+      "S3DeleteObjectsRequest": {
+        "type": "object",
+        "properties": {
+          "bucket": {
+            "type": "string"
+          },
+          "objects": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/S3DeleteObjectIdentifier"
+            }
+          },
+          "quiet": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "bucket",
+          "objects"
+        ]
+      },
+      "S3DeletedObject": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "version_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "delete_marker": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "delete_marker_version_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "S3DeleteError": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "code": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "message": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "S3DeleteObjectsResponse": {
+        "type": "object",
+        "properties": {
+          "deleted": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/S3DeletedObject"
+            }
+          },
+          "errors": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/S3DeleteError"
+            }
           }
         }
       },

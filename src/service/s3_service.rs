@@ -1,7 +1,7 @@
 use base64::{Engine, engine::general_purpose::STANDARD as BASE64_STANDARD};
 use shiguredo_s3::{
     Credential, S3Client, S3Config, S3Request, S3Response,
-    types::{CompletedMultipartUpload, CompletedPart},
+    types::{CompletedMultipartUpload, CompletedPart, ObjectIdentifier},
 };
 
 use crate::{
@@ -35,6 +35,17 @@ pub struct HeadObjectInput {
 pub struct DeleteObjectInput {
     pub bucket: String,
     pub key: String,
+}
+
+pub struct DeleteObjectIdentifierInput {
+    pub key: String,
+    pub version_id: Option<String>,
+}
+
+pub struct DeleteObjectsInput {
+    pub bucket: String,
+    pub objects: Vec<DeleteObjectIdentifierInput>,
+    pub quiet: bool,
 }
 
 pub struct ListObjectsV2Input {
@@ -237,6 +248,67 @@ pub async fn delete_object(
         f.object(|f| {
             f.member("delete_marker", &output.delete_marker)?;
             f.member("version_id", &output.version_id)
+        })
+    })
+    .to_string())
+}
+
+pub async fn delete_objects(
+    http_client: &HttpClient,
+    settings: &Settings,
+    input: DeleteObjectsInput,
+) -> Result<String, ApiError> {
+    let s3 = create_s3_client(settings)?;
+    let mut req = s3.delete_objects().bucket(input.bucket).quiet(input.quiet);
+    for object in input.objects {
+        req = req.object(ObjectIdentifier {
+            key: object.key,
+            version_id: object.version_id,
+        });
+    }
+
+    let request = req
+        .build_request()
+        .map_err(map_s3_input_error_to_api_error)?;
+    let response = execute_s3(http_client, request).await?;
+    let output = shiguredo_s3::api::DeleteObjectsFluentBuilder::parse_response(&response)
+        .map_err(map_s3_runtime_error_to_api_error)?;
+
+    let deleted = output.deleted.unwrap_or_default();
+    let errors = output.errors.unwrap_or_default();
+
+    Ok(nojson::json(|f| {
+        f.object(|f| {
+            f.member(
+                "deleted",
+                nojson::array(|f| {
+                    for deleted in &deleted {
+                        f.element(nojson::object(|f| {
+                            f.member("key", &deleted.key)?;
+                            f.member("version_id", &deleted.version_id)?;
+                            f.member("delete_marker", &deleted.delete_marker)?;
+                            f.member(
+                                "delete_marker_version_id",
+                                &deleted.delete_marker_version_id,
+                            )
+                        }))?;
+                    }
+                    Ok(())
+                }),
+            )?;
+            f.member(
+                "errors",
+                nojson::array(|f| {
+                    for error in &errors {
+                        f.element(nojson::object(|f| {
+                            f.member("key", &error.key)?;
+                            f.member("code", &error.code)?;
+                            f.member("message", &error.message)
+                        }))?;
+                    }
+                    Ok(())
+                }),
+            )
         })
     })
     .to_string())
