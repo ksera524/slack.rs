@@ -141,6 +141,9 @@ fn get_optional_string(
     else {
         return Ok(None);
     };
+    if value.kind().is_null() {
+        return Ok(None);
+    }
     let parsed = String::try_from(value)
         .map_err(|e| ApiError::BadRequest(format!("Invalid '{name}': {e}")))?;
     Ok(Some(parsed))
@@ -157,6 +160,9 @@ fn get_optional_i32(
     else {
         return Ok(None);
     };
+    if value.kind().is_null() {
+        return Ok(None);
+    }
     let parsed =
         i32::try_from(value).map_err(|e| ApiError::BadRequest(format!("Invalid '{name}': {e}")))?;
     Ok(Some(parsed))
@@ -173,6 +179,9 @@ fn get_optional_u64(
     else {
         return Ok(None);
     };
+    if value.kind().is_null() {
+        return Ok(None);
+    }
     let parsed =
         u64::try_from(value).map_err(|e| ApiError::BadRequest(format!("Invalid '{name}': {e}")))?;
     Ok(Some(parsed))
@@ -189,6 +198,9 @@ fn get_optional_bool(
     else {
         return Ok(None);
     };
+    if value.kind().is_null() {
+        return Ok(None);
+    }
     let parsed = bool::try_from(value)
         .map_err(|e| ApiError::BadRequest(format!("Invalid '{name}': {e}")))?;
     Ok(Some(parsed))
@@ -839,4 +851,67 @@ fn sanitize_pdf_filename(key: &str) -> String {
 
 pub fn s3_preflight() -> Response {
     Response::new(204, "No Content")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        parse_delete_objects_request, parse_list_objects_v2_request, parse_presigned_object_request,
+    };
+
+    #[test]
+    fn parse_delete_objects_allows_null_optionals() {
+        let body = r#"{
+            "bucket": "pdfs",
+            "objects": [
+                {"key": "20260418/a.pdf", "version_id": null},
+                {"key": "20260418/b.pdf"}
+            ],
+            "quiet": null
+        }"#;
+
+        let parsed = parse_delete_objects_request(body).expect("request should parse");
+
+        assert_eq!(parsed.bucket, "pdfs");
+        assert_eq!(parsed.objects.len(), 2);
+        assert_eq!(parsed.objects[0].key, "20260418/a.pdf");
+        assert_eq!(parsed.objects[0].version_id, None);
+        assert_eq!(parsed.objects[1].key, "20260418/b.pdf");
+        assert_eq!(parsed.objects[1].version_id, None);
+        assert_eq!(parsed.quiet, None);
+    }
+
+    #[test]
+    fn parse_list_objects_v2_allows_null_optionals() {
+        let body = r#"{
+            "bucket": "pdfs",
+            "prefix": null,
+            "delimiter": null,
+            "max_keys": null,
+            "start_after": null
+        }"#;
+
+        let parsed = parse_list_objects_v2_request(body).expect("request should parse");
+
+        assert_eq!(parsed.bucket, "pdfs");
+        assert_eq!(parsed.prefix, None);
+        assert_eq!(parsed.delimiter, None);
+        assert_eq!(parsed.max_keys, None);
+        assert_eq!(parsed.start_after, None);
+    }
+
+    #[test]
+    fn parse_presigned_object_allows_null_expires_in_secs() {
+        let body = r#"{
+            "bucket": "pdfs",
+            "key": "20260418/a.pdf",
+            "expires_in_secs": null
+        }"#;
+
+        let parsed = parse_presigned_object_request(body).expect("request should parse");
+
+        assert_eq!(parsed.bucket, "pdfs");
+        assert_eq!(parsed.key, "20260418/a.pdf");
+        assert_eq!(parsed.expires_in_secs, None);
+    }
 }
