@@ -46,6 +46,20 @@ pub async fn handle_connection(mut stream: TcpStream, app_state: AppState) {
         };
 
         let keep_alive = request.is_keep_alive();
+
+        if is_preview_get(&request) {
+            if write_preview_stream_response(&mut stream, request, &app_state, keep_alive)
+                .await
+                .is_err()
+            {
+                return;
+            }
+            if !keep_alive {
+                return;
+            }
+            continue;
+        }
+
         let mut response = process_request(request, &app_state).await;
 
         if !keep_alive {
@@ -66,6 +80,218 @@ async fn write_response(stream: &mut TcpStream, response: Response) -> std::io::
 
     stream.write_all(&encoded).await?;
     stream.flush().await
+}
+
+fn is_preview_get(request: &Request) -> bool {
+    let (path, _) = split_uri(&request.uri);
+    request.method == "GET" && path.starts_with("/s3/preview/")
+}
+
+fn parse_preview_bucket_and_key(path: &str) -> Result<(String, String), ApiError> {
+    let remaining = &path["/s3/preview/".len()..];
+    let (bucket, key) = remaining
+        .split_once('/')
+        .ok_or_else(|| ApiError::BadRequest("Invalid preview path".to_string()))?;
+    if bucket.is_empty() || key.is_empty() {
+        return Err(ApiError::BadRequest("Invalid preview path".to_string()));
+    }
+
+    let decoded_bucket = percent_decode(bucket)
+        .map_err(|_| ApiError::BadRequest("Invalid preview path".to_string()))?;
+    let decoded_key = percent_decode(key)
+        .map_err(|_| ApiError::BadRequest("Invalid preview path".to_string()))?;
+    Ok((decoded_bucket, decoded_key))
+}
+
+async fn write_preview_stream_response(
+    stream: &mut TcpStream,
+    request: Request,
+    app_state: &AppState,
+    keep_alive: bool,
+) -> std::io::Result<()> {
+    let (path, query) = split_uri(&request.uri);
+    let path = path.to_string();
+    let query = query.map(ToString::to_string);
+    let request_id = request
+        .get_header("x-request-id")
+        .map(ToString::to_string)
+        .unwrap_or_else(request_id::generate_request_id);
+    let method = request.method.clone();
+    let user_agent = request.get_header("user-agent").map(ToString::to_string);
+    let client_ip = request
+        .get_header("x-forwarded-for")
+        .map(ToString::to_string)
+        .or_else(|| request.get_header("x-real-ip").map(ToString::to_string));
+
+    info!(
+        target: "http::request",
+        request_id = %request_id,
+        method = %method,
+        path = %path,
+        query = ?query,
+        user_agent = ?user_agent,
+        client_ip = ?client_ip,
+        "Incoming request"
+    );
+
+    let start = std::time::Instant::now();
+
+    let result = async {
+        let (bucket, key) = parse_preview_bucket_and_key(&path)?;
+        s3_handler::preview_object_stream(app_state, bucket, key, request.headers.as_slice()).await
+    }
+    .await;
+
+    match result {
+        Ok(mut stream_response) => {
+            let mut head =
+                Response::new(stream_response.status_code, stream_response.reason_phrase)
+                    .omit_body(true);
+            for (name, value) in &stream_response.headers {
+                head.add_header(name, value);
+            }
+            apply_s3_cors(&path, &request, &mut head);
+            if !head.has_header("x-request-id") {
+                head.add_header("x-request-id", &request_id);
+            }
+            if !keep_alive {
+                head.add_header("Connection", "close");
+            }
+
+            let encoded_head = head.encode();
+            stream.write_all(&encoded_head).await?;
+
+            let mut chunk = vec![0_u8; 16 * 1024];
+            loop {
+                let n = stream_response
+                    .body_stream
+                    .read_chunk(&mut chunk)
+                    .await
+                    .map_err(|e| std::io::Error::other(e.to_string()))?;
+                if n == 0 {
+                    break;
+                }
+                stream.write_all(&chunk[..n]).await?;
+            }
+            stream.flush().await?;
+
+            let latency_ms = start.elapsed().as_millis() as u64;
+            match stream_response.status_code {
+                200..=299 => info!(
+                    target: "http::response",
+                    request_id = %request_id,
+                    method = %method,
+                    path = %path,
+                    status = stream_response.status_code,
+                    latency_ms,
+                    "Request completed"
+                ),
+                300..=399 => info!(
+                    target: "http::response",
+                    request_id = %request_id,
+                    method = %method,
+                    path = %path,
+                    status = stream_response.status_code,
+                    latency_ms,
+                    "Request redirected"
+                ),
+                400..=499 => warn!(
+                    target: "http::response",
+                    request_id = %request_id,
+                    method = %method,
+                    path = %path,
+                    status = stream_response.status_code,
+                    latency_ms,
+                    "Client error"
+                ),
+                500..=599 => error!(
+                    target: "http::response",
+                    request_id = %request_id,
+                    method = %method,
+                    path = %path,
+                    status = stream_response.status_code,
+                    latency_ms,
+                    "Server error"
+                ),
+                _ => debug!(
+                    target: "http::response",
+                    request_id = %request_id,
+                    method = %method,
+                    path = %path,
+                    status = stream_response.status_code,
+                    latency_ms,
+                    "Unexpected status"
+                ),
+            }
+
+            Ok(())
+        }
+        Err(error) => {
+            let mut response = error.into_response();
+            apply_problem_details(&mut response);
+            apply_s3_cors(&path, &request, &mut response);
+            if !response.has_header("x-request-id") {
+                response.add_header("x-request-id", &request_id);
+            }
+            if !keep_alive {
+                response.add_header("Connection", "close");
+            }
+
+            let status = response.status_code;
+            write_response(stream, response).await?;
+
+            let latency_ms = start.elapsed().as_millis() as u64;
+            match status {
+                200..=299 => info!(
+                    target: "http::response",
+                    request_id = %request_id,
+                    method = %method,
+                    path = %path,
+                    status,
+                    latency_ms,
+                    "Request completed"
+                ),
+                300..=399 => info!(
+                    target: "http::response",
+                    request_id = %request_id,
+                    method = %method,
+                    path = %path,
+                    status,
+                    latency_ms,
+                    "Request redirected"
+                ),
+                400..=499 => warn!(
+                    target: "http::response",
+                    request_id = %request_id,
+                    method = %method,
+                    path = %path,
+                    status,
+                    latency_ms,
+                    "Client error"
+                ),
+                500..=599 => error!(
+                    target: "http::response",
+                    request_id = %request_id,
+                    method = %method,
+                    path = %path,
+                    status,
+                    latency_ms,
+                    "Server error"
+                ),
+                _ => debug!(
+                    target: "http::response",
+                    request_id = %request_id,
+                    method = %method,
+                    path = %path,
+                    status,
+                    latency_ms,
+                    "Unexpected status"
+                ),
+            }
+
+            Ok(())
+        }
+    }
 }
 
 async fn process_request(request: Request, app_state: &AppState) -> Response {
@@ -277,20 +503,6 @@ async fn route_request(
         _ => {}
     }
 
-    if request.method == "GET" && path.starts_with("/s3/preview/") {
-        let remaining = &path["/s3/preview/".len()..];
-        if let Some((bucket, key)) = remaining.split_once('/') {
-            if !bucket.is_empty() && !key.is_empty() {
-                let decoded_bucket = percent_decode(bucket)
-                    .map_err(|_| ApiError::BadRequest("Invalid preview path".to_string()))?;
-                let decoded_key = percent_decode(key)
-                    .map_err(|_| ApiError::BadRequest("Invalid preview path".to_string()))?;
-
-                return s3_handler::preview_object(app_state, decoded_bucket, decoded_key).await;
-            }
-        }
-    }
-
     if is_known_path(path) {
         return Err(ApiError::MethodNotAllowed(format!(
             "Method {} is not allowed for {}",
@@ -368,7 +580,7 @@ fn apply_s3_cors(path: &str, request: &Request, response: &mut Response) {
         .unwrap_or(S3_CORS_ALLOWED_ORIGIN);
 
     response.add_header("Access-Control-Allow-Origin", allow_origin);
-    response.add_header("Access-Control-Allow-Methods", "POST, OPTIONS");
+    response.add_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
     response.add_header("Access-Control-Allow-Headers", "content-type, x-request-id");
     response.add_header("Access-Control-Max-Age", "600");
     response.add_header("Vary", "Origin");

@@ -1,13 +1,13 @@
 use base64::{Engine, engine::general_purpose::STANDARD as BASE64_STANDARD};
 use shiguredo_s3::{
     Credential, S3Client, S3Config, S3Request, S3Response,
-    types::{CompletedMultipartUpload, CompletedPart, ObjectIdentifier},
+    types::{CompletedMultipartUpload, CompletedPart, HttpDate, ObjectIdentifier},
 };
 
 use crate::{
     config::settings::Settings,
     errors::api_error::ApiError,
-    http_client::{HttpClient, HttpRequest},
+    http_client::{HttpClient, HttpRequest, HttpResponseStream},
 };
 
 pub struct PutObjectInput {
@@ -25,6 +25,16 @@ pub struct GetObjectInput {
 pub struct ProxyObjectInput {
     pub bucket: String,
     pub key: String,
+}
+
+pub struct ProxyObjectStreamInput {
+    pub bucket: String,
+    pub key: String,
+    pub range: Option<String>,
+    pub if_match: Option<String>,
+    pub if_none_match: Option<String>,
+    pub if_modified_since: Option<String>,
+    pub if_unmodified_since: Option<String>,
 }
 
 pub struct HeadObjectInput {
@@ -197,6 +207,47 @@ pub async fn get_object_proxy(
         .build_request()
         .map_err(map_s3_input_error_to_api_error)?;
     execute_s3(http_client, request).await
+}
+
+pub async fn get_object_proxy_stream(
+    http_client: &HttpClient,
+    settings: &Settings,
+    input: ProxyObjectStreamInput,
+) -> Result<HttpResponseStream, ApiError> {
+    let s3 = create_s3_client(settings)?;
+    let mut request_builder = s3.get_object().bucket(input.bucket).key(input.key);
+    if let Some(range) = input.range {
+        request_builder = request_builder.range(range);
+    }
+    if let Some(if_match) = input.if_match {
+        request_builder = request_builder.if_match(if_match);
+    }
+    if let Some(if_none_match) = input.if_none_match {
+        request_builder = request_builder.if_none_match(if_none_match);
+    }
+    if let Some(if_modified_since) = input.if_modified_since {
+        request_builder =
+            request_builder.if_modified_since(HttpDate::from_imf_fixdate(if_modified_since));
+    }
+    if let Some(if_unmodified_since) = input.if_unmodified_since {
+        request_builder =
+            request_builder.if_unmodified_since(HttpDate::from_imf_fixdate(if_unmodified_since));
+    }
+
+    let request = request_builder
+        .build_request()
+        .map_err(map_s3_input_error_to_api_error)?;
+
+    let url = build_s3_url(&request)?;
+    http_client
+        .send_streaming(HttpRequest {
+            method: request.method,
+            url,
+            headers: request.headers,
+            body: request.body,
+        })
+        .await
+        .map_err(|e| ApiError::InternalServerError(format!("S3 HTTP request failed: {e}")))
 }
 
 pub async fn head_object(

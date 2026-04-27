@@ -3,14 +3,23 @@ use shiguredo_http11::Response;
 use crate::{
     config::state::AppState,
     errors::api_error::ApiError,
+    http_client::HttpResponseStream,
     service::s3_service::{
         self, AbortMultipartUploadInput, CompleteMultipartUploadInput, CompletePartInput,
         CreateBucketInput, CreateMultipartUploadInput, DeleteBucketInput,
         DeleteObjectIdentifierInput, DeleteObjectInput, DeleteObjectsInput, GetObjectInput,
         HeadBucketInput, HeadObjectInput, ListMultipartUploadsInput, ListObjectsV2Input,
-        ListPartsInput, PresignedObjectInput, ProxyObjectInput, PutObjectInput, UploadPartInput,
+        ListPartsInput, PresignedObjectInput, ProxyObjectInput, ProxyObjectStreamInput,
+        PutObjectInput, UploadPartInput,
     },
 };
+
+pub struct PreviewObjectStreamResponse {
+    pub status_code: u16,
+    pub reason_phrase: &'static str,
+    pub headers: Vec<(String, String)>,
+    pub body_stream: HttpResponseStream,
+}
 
 pub struct PutObjectBase64Request {
     pub bucket: String,
@@ -736,6 +745,55 @@ pub async fn preview_object(
     )
     .body(s3_response.body);
 
+    for (name, value) in build_preview_response_headers(&s3_response.headers, &key) {
+        response.add_header(&name, &value);
+    }
+
+    Ok(response)
+}
+
+pub async fn preview_object_stream(
+    app_state: &AppState,
+    bucket: String,
+    key: String,
+    request_headers: &[(String, String)],
+) -> Result<PreviewObjectStreamResponse, ApiError> {
+    let s3_response = s3_service::get_object_proxy_stream(
+        &app_state.client,
+        &app_state.settings,
+        ProxyObjectStreamInput {
+            bucket,
+            key: key.clone(),
+            range: extract_forward_header(request_headers, "range"),
+            if_match: extract_forward_header(request_headers, "if-match"),
+            if_none_match: extract_forward_header(request_headers, "if-none-match"),
+            if_modified_since: extract_forward_header(request_headers, "if-modified-since"),
+            if_unmodified_since: extract_forward_header(request_headers, "if-unmodified-since"),
+        },
+    )
+    .await?;
+
+    let headers = build_preview_response_headers(&s3_response.headers, &key);
+
+    Ok(PreviewObjectStreamResponse {
+        status_code: s3_response.status_code,
+        reason_phrase: response_reason(s3_response.status_code),
+        headers,
+        body_stream: s3_response,
+    })
+}
+
+fn extract_forward_header(headers: &[(String, String)], name: &str) -> Option<String> {
+    headers
+        .iter()
+        .find(|(header_name, _)| header_name.eq_ignore_ascii_case(name))
+        .map(|(_, value)| value.clone())
+}
+
+fn build_preview_response_headers(
+    source_headers: &[(String, String)],
+    key: &str,
+) -> Vec<(String, String)> {
     let pass_through_headers = [
         "content-type",
         "content-length",
@@ -745,32 +803,44 @@ pub async fn preview_object(
         "content-range",
         "accept-ranges",
     ];
+    let mut headers = Vec::new();
 
-    for (name, value) in s3_response.headers {
+    for (name, value) in source_headers {
         if !pass_through_headers
             .iter()
             .any(|allowed| name.eq_ignore_ascii_case(allowed))
         {
             continue;
         }
-
-        if !is_valid_header_name(&name) || !is_valid_header_value(&value) {
+        if !is_valid_header_name(name) || !is_valid_header_value(value) {
             continue;
         }
-        response.add_header(&name, &value);
+        headers.push((name.clone(), value.clone()));
     }
 
-    if should_force_pdf_preview(response.get_header("content-type"), &key) {
-        response.add_header("Content-Type", "application/pdf");
-
-        let file_name = sanitize_pdf_filename(&key);
-        response.add_header(
+    if should_force_pdf_preview(get_header_value(&headers, "content-type"), key) {
+        upsert_header(&mut headers, "Content-Type", "application/pdf");
+        let file_name = sanitize_pdf_filename(key);
+        upsert_header(
+            &mut headers,
             "Content-Disposition",
             &format!("inline; filename=\"{}\"", file_name),
         );
     }
 
-    Ok(response)
+    headers
+}
+
+fn get_header_value<'a>(headers: &'a [(String, String)], name: &str) -> Option<&'a str> {
+    headers
+        .iter()
+        .find(|(header_name, _)| header_name.eq_ignore_ascii_case(name))
+        .map(|(_, value)| value.as_str())
+}
+
+fn upsert_header(headers: &mut Vec<(String, String)>, name: &str, value: &str) {
+    headers.retain(|(header_name, _)| !header_name.eq_ignore_ascii_case(name));
+    headers.push((name.to_string(), value.to_string()));
 }
 
 fn should_force_pdf_preview(content_type: Option<&str>, key: &str) -> bool {
@@ -856,8 +926,10 @@ pub fn s3_preflight() -> Response {
 #[cfg(test)]
 mod tests {
     use super::{
-        parse_delete_objects_request, parse_list_objects_v2_request, parse_presigned_object_request,
+        extract_forward_header, parse_delete_objects_request, parse_list_objects_v2_request,
+        parse_presigned_object_request,
     };
+    use proptest::{prelude::ProptestConfig, prop_assert_eq, proptest};
 
     #[test]
     fn parse_delete_objects_allows_null_optionals() {
@@ -913,5 +985,20 @@ mod tests {
         assert_eq!(parsed.bucket, "pdfs");
         assert_eq!(parsed.key, "20260418/a.pdf");
         assert_eq!(parsed.expires_in_secs, None);
+    }
+
+    proptest! {
+        #![proptest_config(ProptestConfig::with_cases(64))]
+
+        #[test]
+        fn extract_forward_header_is_case_insensitive(value in "[ -~]{0,64}") {
+            let headers = vec![
+                ("RaNgE".to_string(), value.clone()),
+                ("x-request-id".to_string(), "req-1".to_string()),
+            ];
+
+            let extracted = extract_forward_header(&headers, "range");
+            prop_assert_eq!(extracted, Some(value));
+        }
     }
 }
